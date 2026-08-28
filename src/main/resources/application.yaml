@@ -1,0 +1,33 @@
+spring:
+  application:
+    name: cine
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/postgres}
+    username: ${SPRING_DATASOURCE_USERNAME:user}
+    password: ${SPRING_DATASOURCE_PASSWORD:secret}
+  threads:
+    virtual:
+      enabled: true
+  jpa:
+    generate-ddl: true
+
+management:
+  otlp:
+    metrics:
+      export:
+        url: http://localhost:4318/v1/metrics
+  opentelemetry:
+    tracing:
+      export:
+        otlp:
+          endpoint: http://localhost:4318/v1/traces
+    logging:
+      export:
+        otlp:
+          endpoint: http://localhost:4318/v1/logs
+
+server:
+  port: 8080
+logging:
+  level:
+    root: INFO
