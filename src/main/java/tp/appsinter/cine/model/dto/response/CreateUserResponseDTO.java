@@ -1,4 +1,24 @@
 package tp.appsinter.cine.model.dto.response;
 
-public record CreateUserResponseDTO() {
+import tp.appsinter.cine.model.entities.User;
+import tp.appsinter.cine.model.utils.Role;
+
+import java.util.UUID;
+
+public record CreateUserResponseDTO(
+        UUID uuid,
+        String firstName,
+        String lastName,
+        String email,
+        Role role
+) {
+    public static CreateUserResponseDTO from(User user) {
+        return new CreateUserResponseDTO(
+                user.getUuid(),
+                user.getFirstName(),
+                user.getLastName(),
+                user.getEmail(),
+                user.getRole()
+        );
+    }
 }

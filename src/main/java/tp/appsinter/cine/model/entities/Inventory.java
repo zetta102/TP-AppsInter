@@ -1,18 +1,44 @@
 package tp.appsinter.cine.model.entities;
 
-import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
+import jakarta.persistence.*;
+import lombok.*;
+import tp.appsinter.cine.model.utils.ProductCategory;
 
+import java.math.BigDecimal;
 import java.util.UUID;
 
+/**
+ * A concession product sold at the counter.
+ */
 @Entity
+@Table(name = "inventory")
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
+@ToString
+@EqualsAndHashCode(onlyExplicitlyIncluded = true)
 public class Inventory {
+
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
+    @EqualsAndHashCode.Include
     private UUID uuid;
+
+    @Column(nullable = false, unique = true)
     private String productName;
-    private Double cost;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private ProductCategory category;
+
+    @Column(nullable = false, precision = 10, scale = 2)
+    private BigDecimal cost;
+
+    @Column(nullable = false)
     private Integer quantity;
+
+    @Version
+    private Long version;
 }

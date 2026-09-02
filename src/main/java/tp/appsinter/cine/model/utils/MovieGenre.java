@@ -6,10 +6,14 @@ import lombok.RequiredArgsConstructor;
 @Getter
 @RequiredArgsConstructor
 public enum MovieGenre {
-    ACTION,
-    THRILLER,
-    TERROR,
-    ROMANCE;
+    ACTION("Action"),
+    THRILLER("Thriller"),
+    TERROR("Terror"),
+    ROMANCE("Romance"),
+    COMEDY("Comedy"),
+    DRAMA("Drama"),
+    ANIMATION("Animation"),
+    SCI_FI("Sci-Fi");
 
-    private String MovieGenre;
+    private final String displayName;
 }
