@@ -6,6 +6,7 @@ services:
       - '4317'
       - '4318'
   postgres:
+
     image: postgres:17-alpine
     container_name: postgres_cinema
     ports:
