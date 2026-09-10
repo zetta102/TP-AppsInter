@@ -1,6 +1,7 @@
 package tp.appsinter.cine.security;
 
 import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
@@ -37,16 +38,24 @@ public class JwtService {
         return new IssuedToken(token, expiresAt.atOffset(ZoneOffset.UTC));
     }
 
-    public Optional<Claims> parse(String token) {
+    /**
+     * Analiza un token de acceso distinguiendo el vencimiento del resto de los fallos, para que la
+     * respuesta {@code 401} pueda llevar {@code TOKEN_EXPIRED} y el cliente sepa que le alcanza con
+     * renovar en lugar de volver a iniciar sesión.
+     */
+    public ParsedAccessToken parse(String token) {
         try {
-            return Optional.of(Jwts.parser()
+            Claims claims = Jwts.parser()
                     .verifyWith(signingKey())
                     .requireIssuer(properties.issuer())
                     .build()
                     .parseSignedClaims(token)
-                    .getPayload());
+                    .getPayload();
+            return new ParsedAccessToken(claims, false);
+        } catch (ExpiredJwtException ex) {
+            return new ParsedAccessToken(null, true);
         } catch (JwtException | IllegalArgumentException ex) {
-            return Optional.empty();
+            return new ParsedAccessToken(null, false);
         }
     }
 
@@ -55,5 +64,16 @@ public class JwtService {
     }
 
     public record IssuedToken(String token, OffsetDateTime expiresAt) {
+    }
+
+    /**
+     * @param claims  reclamaciones del token, o {@code null} si no se pudo validar
+     * @param expired {@code true} sólo cuando la firma era correcta pero el token venció
+     */
+    public record ParsedAccessToken(Claims claims, boolean expired) {
+
+        public Optional<Claims> claimsIfValid() {
+            return Optional.ofNullable(claims);
+        }
     }
 }

@@ -5,20 +5,19 @@ import lombok.*;
 import tp.appsinter.cine.model.utils.SeatType;
 
 import java.math.BigDecimal;
+import java.time.OffsetDateTime;
 import java.util.UUID;
 
 /**
- * A single booked seat for a single screening. The unique constraint on
- * (movie_screening_id, seat_id) is the authoritative guard against double-booking.
+ * Una butaca vendida para una función.
+ *
+ * <p>La garantía contra la doble venta es el índice único parcial
+ * {@code uk_ticket_screening_seat (movie_screening_id, seat_id) where cancelled_at is null}, definido
+ * en la migración. No se declara acá porque JPA sólo sabe expresar restricciones únicas totales, y
+ * una total impediría volver a vender una butaca liberada por una cancelación.
  */
 @Entity
-@Table(
-        name = "ticket",
-        uniqueConstraints = @UniqueConstraint(
-                name = "uk_ticket_screening_seat",
-                columnNames = {"movie_screening_id", "seat_id"}
-        )
-)
+@Table(name = "ticket")
 @Getter
 @Setter
 @NoArgsConstructor
@@ -51,4 +50,15 @@ public class Ticket {
 
     @Column(nullable = false, precision = 10, scale = 2)
     private BigDecimal price;
+
+    /**
+     * Momento en que la entrada quedó liberada por una cancelación. Mientras sea nulo, la butaca
+     * cuenta como ocupada.
+     */
+    @Column(name = "cancelled_at")
+    private OffsetDateTime cancelledAt;
+
+    public boolean isCancelled() {
+        return cancelledAt != null;
+    }
 }

@@ -25,7 +25,8 @@ import tp.appsinter.cine.security.ProblemDetailAuthenticationEntryPoint;
 
 @Configuration
 @EnableWebSecurity
-@EnableConfigurationProperties({JwtProperties.class, CorsProperties.class, AdminProperties.class})
+@EnableConfigurationProperties({JwtProperties.class, CorsProperties.class, AdminProperties.class,
+        SeatHoldProperties.class})
 @RequiredArgsConstructor
 public class SecurityConfig {
 
@@ -49,14 +50,22 @@ public class SecurityConfig {
                         .requestMatchers("/api/auth/**").permitAll()
                         .requestMatchers("/actuator/health/**", "/actuator/info").permitAll()
                         .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()
+                        // La carta y los metadatos son información pública, igual que la cartelera.
+                        .requestMatchers(HttpMethod.GET, "/api/products/**", "/api/metadata/**").permitAll()
                         .requestMatchers(HttpMethod.GET,
                                 "/api/movies/**", "/api/screenings/**", "/api/rooms/**", "/api/seats/**")
                         .permitAll()
+                        // Bloquear butacas es cosa de clientes, no de administración, y debe
+                        // evaluarse antes de la regla que reserva el resto de /api/screenings.
+                        .requestMatchers(HttpMethod.POST, "/api/screenings/*/holds").authenticated()
                         .requestMatchers("/api/movies/**", "/api/screenings/**", "/api/rooms/**",
                                 "/api/seats/**", "/api/inventory/**")
                         .hasRole(ADMIN)
-                        // The self endpoint must be matched before the admin-only user lookups.
+                        // Los endpoints de la cuenta propia deben evaluarse antes de la regla que
+                        // reserva el resto de /api/users a administración.
                         .requestMatchers(HttpMethod.GET, "/api/users/me").authenticated()
+                        .requestMatchers(HttpMethod.PATCH, "/api/users/me").authenticated()
+                        .requestMatchers(HttpMethod.POST, "/api/users/me/password").authenticated()
                         .requestMatchers("/api/users/**").hasRole(ADMIN)
                         .anyRequest().authenticated())
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)

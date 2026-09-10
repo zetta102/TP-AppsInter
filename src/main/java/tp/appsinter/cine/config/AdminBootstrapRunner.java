@@ -12,7 +12,7 @@ import tp.appsinter.cine.repository.UserRepository;
 import tp.appsinter.cine.service.UserService;
 
 /**
- * Registration always creates customers, so without this seed no administrator could ever exist.
+ * El registro siempre crea clientes, así que sin esta semilla nunca podría existir un administrador.
  */
 @Component
 @RequiredArgsConstructor

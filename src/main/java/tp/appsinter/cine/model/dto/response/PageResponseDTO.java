@@ -6,8 +6,8 @@ import java.util.List;
 import java.util.function.Function;
 
 /**
- * Stable pagination envelope. Spring's own {@code Page} serialization is not part of its public
- * contract, so listings wrap results in this record instead.
+ * Sobre de paginación estable. La serialización de {@code Page} no forma parte del contrato público
+ * de Spring, así que los listados envuelven sus resultados en este registro.
  */
 public record PageResponseDTO<T>(
         List<T> content,
@@ -24,8 +24,16 @@ public record PageResponseDTO<T>(
     public static final int MAX_PAGE_SIZE = 100;
 
     public static <E, T> PageResponseDTO<T> from(Page<E> page, Function<E, T> mapper) {
+        return from(page, page.getContent().stream().map(mapper).toList());
+    }
+
+    /**
+     * Variante para cuando el contenido ya fue convertido en lote, por ejemplo porque hizo falta
+     * una consulta agregada que cubre toda la página de una vez.
+     */
+    public static <E, T> PageResponseDTO<T> from(Page<E> page, List<T> content) {
         return new PageResponseDTO<>(
-                page.getContent().stream().map(mapper).toList(),
+                content,
                 page.getNumber(),
                 page.getSize(),
                 page.getTotalElements(),

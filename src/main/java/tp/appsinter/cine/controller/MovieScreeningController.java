@@ -8,6 +8,7 @@ import org.springframework.data.web.PageableDefault;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import tp.appsinter.cine.model.dto.request.CreateMovieScreeningDTO;
 import tp.appsinter.cine.model.dto.response.CreateMovieScreeningResponseDTO;
@@ -43,18 +44,25 @@ public class MovieScreeningController {
             @RequestParam(required = false) UUID roomId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime to,
+            @RequestParam(defaultValue = "true") boolean includeAvailability,
             @PageableDefault(size = 20, sort = "startsAt") Pageable pageable) {
-        return movieScreeningService.search(movieId, roomId, from, to, upcomingOnly, pageable);
+        return movieScreeningService.search(movieId, roomId, from, to, upcomingOnly, includeAvailability, pageable);
     }
 
     @GetMapping("/{uuid}")
-    public CreateMovieScreeningResponseDTO findById(@PathVariable UUID uuid) {
-        return movieScreeningService.findById(uuid);
+    public CreateMovieScreeningResponseDTO findById(
+            @PathVariable UUID uuid,
+            @RequestParam(defaultValue = "true") boolean includeAvailability) {
+        return movieScreeningService.findById(uuid, includeAvailability);
     }
 
+    /**
+     * Mapa de butacas. Es público, pero si quien consulta está autenticado se le muestran como
+     * disponibles las butacas que él mismo tiene bloqueadas.
+     */
     @GetMapping("/{uuid}/seats")
-    public SeatMapResponseDTO findSeatMap(@PathVariable UUID uuid) {
-        return reservationService.findSeatMap(uuid);
+    public SeatMapResponseDTO findSeatMap(Authentication authentication, @PathVariable UUID uuid) {
+        return reservationService.findSeatMap(uuid, authentication == null ? null : authentication.getName());
     }
 
     @PutMapping("/{uuid}")

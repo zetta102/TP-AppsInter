@@ -179,8 +179,13 @@ class ConcessionFlowTests {
                     reservationService.cancelReservation(created.uuid(), customer.getEmail(), false);
 
             assertAll(
-                    () -> assertThat(cancelled.items()).isEmpty(),
+                    // La cancelación conserva el historial: las líneas siguen ahí y el total pasa a
+                    // cero, con el importe original guardado aparte.
+                    () -> assertThat(cancelled.items()).hasSize(1),
+                    () -> assertThat(cancelled.status()).isEqualTo(ReservationStatus.CANCELLED),
+                    () -> assertThat(cancelled.cancelledAt()).isNotNull(),
                     () -> assertThat(cancelled.totalPrice()).isEqualByComparingTo(BigDecimal.ZERO),
+                    () -> assertThat(cancelled.originalTotalPrice()).isGreaterThan(BigDecimal.ZERO),
                     () -> assertThat(inventoryRepository.findById(popcorn.getUuid()))
                             .hasValueSatisfying(item -> assertThat(item.getQuantity()).isEqualTo(10)));
         }

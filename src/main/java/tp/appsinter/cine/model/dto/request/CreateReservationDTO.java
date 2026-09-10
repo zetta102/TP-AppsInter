@@ -9,10 +9,17 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.UUID;
 
+/**
+ * Petición de alta de una reserva.
+ *
+ * @param holdId bloqueo temporal del que provienen las butacas, si el cliente creó uno. Es opcional:
+ *               sin él la compra sigue funcionando, sólo que expuesta a que otro se adelante.
+ */
 public record CreateReservationDTO(
         @NotNull UUID movieScreeningId,
         @NotEmpty List<UUID> seatIds,
-        @Valid List<ReservationItemRequestDTO> products
+        @Valid List<ReservationItemRequestDTO> products,
+        UUID holdId
 ) {
     public CreateReservationDTO {
         seatIds = seatIds == null ? List.of() : seatIds.stream().distinct().toList();
@@ -20,7 +27,16 @@ public record CreateReservationDTO(
     }
 
     /**
-     * Repeating the same product is treated as ordering more of it rather than as an error.
+     * Compra sin bloqueo previo, que es el camino corto y sigue siendo válido.
+     */
+    public CreateReservationDTO(UUID movieScreeningId,
+                                List<UUID> seatIds,
+                                List<ReservationItemRequestDTO> products) {
+        this(movieScreeningId, seatIds, products, null);
+    }
+
+    /**
+     * Repetir el mismo producto se interpreta como pedir más unidades, no como un error.
      */
     private static List<ReservationItemRequestDTO> mergeByProduct(List<ReservationItemRequestDTO> products) {
         var merged = new LinkedHashMap<UUID, Integer>();

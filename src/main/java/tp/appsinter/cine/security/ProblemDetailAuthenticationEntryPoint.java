@@ -8,11 +8,13 @@ import org.springframework.http.HttpStatus;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.stereotype.Component;
+import tp.appsinter.cine.exception.ErrorCode;
 
 import java.io.IOException;
 
 /**
- * Replaces {@code HttpStatusEntryPoint} so unauthenticated requests get a body instead of a bare 401.
+ * Sustituye a {@code HttpStatusEntryPoint} para que las peticiones sin autenticar reciban un cuerpo
+ * en lugar de un 401 vacío.
  */
 @Component
 @RequiredArgsConstructor
@@ -24,7 +26,14 @@ public class ProblemDetailAuthenticationEntryPoint implements AuthenticationEntr
     public void commence(@NonNull HttpServletRequest request,
                          @NonNull HttpServletResponse response,
                          @NonNull AuthenticationException authException) throws IOException {
+        // Una familia revocada por reutilización no es lo mismo que unas credenciales cualquiera: el
+        // cliente tiene que dejar de reintentar y volver a pedir el inicio de sesión.
+        if (authException instanceof RefreshTokenReusedException) {
+            writer.write(request, response, HttpStatus.UNAUTHORIZED,
+                    authException.getMessage(), ErrorCode.TOKEN_REVOKED);
+            return;
+        }
         writer.write(request, response, HttpStatus.UNAUTHORIZED,
-                "Authentication is required to access this resource");
+                "Authentication is required to access this resource", ErrorCode.INVALID_CREDENTIALS);
     }
 }

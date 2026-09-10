@@ -5,6 +5,7 @@ import lombok.*;
 import tp.appsinter.cine.model.utils.Role;
 
 import java.util.ArrayList;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -44,4 +45,17 @@ public class User {
     @OneToMany(mappedBy = "user")
     @Builder.Default
     private List<Reservation> reservations = new ArrayList<>();
+
+    /**
+     * Fecha de baja lógica, o {@code null} si la cuenta está activa.
+     *
+     * <p>No se borra la fila porque sus reservas son historial de ventas y quedarían huérfanas. Una
+     * cuenta dada de baja no puede iniciar sesión ni aparecer en los listados.
+     */
+    @Column(name = "deleted_at")
+    private OffsetDateTime deletedAt;
+
+    public boolean isDeleted() {
+        return deletedAt != null;
+    }
 }

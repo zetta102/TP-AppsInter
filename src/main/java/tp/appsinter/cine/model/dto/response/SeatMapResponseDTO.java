@@ -6,8 +6,8 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Seat grid for a screening, with per-seat availability. Carries the grid dimensions so the client
- * does not have to infer them from the seat list.
+ * Grilla de butacas de una función, con la disponibilidad de cada una. Lleva las dimensiones de la
+ * grilla para que el cliente no tenga que deducirlas de la lista de butacas.
  */
 public record SeatMapResponseDTO(
         UUID screeningId,

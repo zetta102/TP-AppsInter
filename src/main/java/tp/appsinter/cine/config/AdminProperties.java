@@ -4,9 +4,9 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.bind.DefaultValue;
 
 /**
- * Optional first-admin seed. Both values must be supplied (normally via the
- * {@code CINE_ADMIN_EMAIL} / {@code CINE_ADMIN_PASSWORD} environment variables) for seeding to run;
- * no credential is ever committed to the repository.
+ * Semilla opcional del primer administrador. Para que la siembra se ejecute hay que dar los dos
+ * valores, normalmente por las variables de entorno {@code CINE_ADMIN_EMAIL} /
+ * {@code CINE_ADMIN_PASSWORD}: ninguna credencial se versiona en el repositorio.
  */
 @ConfigurationProperties(prefix = "cine.admin")
 public record AdminProperties(

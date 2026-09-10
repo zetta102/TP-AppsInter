@@ -113,7 +113,11 @@ class TokenAndUserAccessApiTests {
             String second = refreshTokenFrom(refresh(first));
             assertThat(second).isNotEqualTo(first);
 
-            mockMvc.perform(refresh(first)).andExpect(status().isUnauthorized());
+            // Dentro de la ventana de gracia, reusar el token viejo ya no cierra la sesión: emite
+            // otro de la misma familia, que es lo que tolera dos pestañas o una respuesta perdida.
+            String third = refreshTokenFrom(refresh(first));
+            assertThat(third).isNotIn(first, second);
+
             mockMvc.perform(refresh(second)).andExpect(status().isOk());
         }
 

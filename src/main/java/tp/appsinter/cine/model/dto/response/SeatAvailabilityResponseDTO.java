@@ -5,20 +5,28 @@ import tp.appsinter.cine.model.utils.SeatType;
 
 import java.util.UUID;
 
+/**
+ * Butaca dentro del mapa de una función.
+ *
+ * <p>{@code available} es lo que decide si se puede elegir; {@code held} explica por qué no, cuando
+ * el motivo es que otro cliente la está comprando en este momento y no que ya esté vendida.
+ */
 public record SeatAvailabilityResponseDTO(
         UUID seatId,
         String row,
         String column,
         SeatType seatType,
-        boolean available
+        boolean available,
+        boolean held
 ) {
-    public static SeatAvailabilityResponseDTO of(Seat seat, boolean available) {
+    public static SeatAvailabilityResponseDTO of(Seat seat, boolean available, boolean held) {
         return new SeatAvailabilityResponseDTO(
                 seat.getUuid(),
                 seat.getPosition().row(),
                 seat.getPosition().column(),
                 seat.getSeatType(),
-                available
+                available,
+                held
         );
     }
 }

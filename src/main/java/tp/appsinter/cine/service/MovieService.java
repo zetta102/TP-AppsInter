@@ -13,6 +13,7 @@ import tp.appsinter.cine.model.utils.MovieGenre;
 import tp.appsinter.cine.repository.MovieRepository;
 
 import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 @Service
@@ -36,12 +37,20 @@ public class MovieService {
                 .director(request.director())
                 .mainCast(new ArrayList<>(request.mainCast()))
                 .build();
+        apply(request, movie);
         return CreateMovieResponseDTO.from(movieRepository.save(movie));
     }
 
-    public PageResponseDTO<CreateMovieResponseDTO> findAll(String search, MovieGenre genre, Pageable pageable) {
+    /**
+     * @param genres géneros a coincidir; una película entra si tiene al menos uno de ellos
+     */
+    public PageResponseDTO<CreateMovieResponseDTO> findAll(String search,
+                                                           List<MovieGenre> genres,
+                                                           Integer releaseYear,
+                                                           Pageable pageable) {
+        List<MovieGenre> requested = genres == null || genres.isEmpty() ? null : genres;
         return PageResponseDTO.from(
-                movieRepository.search(normalise(search), genre, pageable),
+                movieRepository.search(normalise(search), requested, releaseYear, pageable),
                 CreateMovieResponseDTO::from);
     }
 
@@ -58,7 +67,21 @@ public class MovieService {
         movie.setDescription(request.description());
         movie.setDirector(request.director());
         movie.setMainCast(new ArrayList<>(request.mainCast()));
+        apply(request, movie);
         return CreateMovieResponseDTO.from(movie);
+    }
+
+    /**
+     * Copia los campos de presentación. Se aplican tal cual, incluidos los nulos, para que editar
+     * una película pueda además vaciar un póster que ya no sirve.
+     */
+    private void apply(CreateMovieDTO request, Movie movie) {
+        movie.setPosterUrl(request.posterUrl());
+        movie.setBackdropUrl(request.backdropUrl());
+        movie.setReleaseYear(request.releaseYear());
+        movie.setCertification(request.certification());
+        movie.setOriginalLanguage(request.originalLanguage());
+        movie.setTrailerUrl(request.trailerUrl());
     }
 
     @Transactional

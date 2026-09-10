@@ -26,7 +26,12 @@ cine:
     secret: ${CINE_JWT_SECRET:1f1d0e6a4c8b2f7e9a3d5c7b1e4f6a8c0d2e4f6a8b0c2d4e6f8a0b2c4d6e8f0a}
     expiration: 15m
     refresh-expiration: 30d
+    refresh-grace: ${CINE_REFRESH_GRACE_SECONDS:30}s
+    refresh-sweep-delay: PT1H
     issuer: cine
+  seat-hold:
+    ttl: ${CINE_SEAT_HOLD_TTL_SECONDS:300}s
+    sweep-delay: PT60S
 
 management:
   otlp:

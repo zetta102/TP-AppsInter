@@ -24,7 +24,9 @@ public class ScreenRoomService {
     @Transactional
     public CreateScreenRoomResponseDTO create(CreateScreenRoomDTO request) {
         if (screenRoomRepository.existsByRoomNameIgnoreCase(request.roomName())) {
-            throw new ConflictException("Screen room '%s' already exists".formatted(request.roomName()));
+            throw ConflictException.nameTaken(
+                    "Screen room '%s' already exists".formatted(request.roomName()),
+                    "roomName", request.roomName());
         }
         ScreenRoom room = ScreenRoom.builder()
                 .roomName(request.roomName())
@@ -45,7 +47,9 @@ public class ScreenRoomService {
     public CreateScreenRoomResponseDTO update(UUID uuid, CreateScreenRoomDTO request) {
         ScreenRoom room = getScreenRoom(uuid);
         if (screenRoomRepository.existsByRoomNameIgnoreCaseAndUuidNot(request.roomName(), uuid)) {
-            throw new ConflictException("Screen room '%s' already exists".formatted(request.roomName()));
+            throw ConflictException.nameTaken(
+                    "Screen room '%s' already exists".formatted(request.roomName()),
+                    "roomName", request.roomName());
         }
         room.setRoomName(request.roomName());
         room.setScreenRoomType(request.screenRoomType());

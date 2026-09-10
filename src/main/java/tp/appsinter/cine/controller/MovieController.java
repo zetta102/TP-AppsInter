@@ -15,6 +15,7 @@ import tp.appsinter.cine.model.utils.MovieGenre;
 import tp.appsinter.cine.service.MovieService;
 
 import java.net.URI;
+import java.util.List;
 import java.util.UUID;
 
 @RestController
@@ -34,9 +35,10 @@ public class MovieController {
     @GetMapping
     public PageResponseDTO<CreateMovieResponseDTO> findAll(
             @RequestParam(required = false) String search,
-            @RequestParam(required = false) MovieGenre genre,
+            @RequestParam(required = false) List<MovieGenre> genre,
+            @RequestParam(required = false) Integer releaseYear,
             @PageableDefault(size = 20, sort = "movieName") Pageable pageable) {
-        return movieService.findAll(search, genre, pageable);
+        return movieService.findAll(search, genre, releaseYear, pageable);
     }
 
     @GetMapping("/{uuid}")

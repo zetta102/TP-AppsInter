@@ -10,6 +10,7 @@ import tp.appsinter.cine.model.entities.MovieScreening;
 
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 @Repository
@@ -33,16 +34,22 @@ public interface MovieScreeningRepository extends JpaRepository<MovieScreening, 
                                 @Param("to") OffsetDateTime to,
                                 Pageable pageable);
 
+    /**
+     * Devuelve la primera función que se superpone con la ventana pedida, para poder nombrarla en
+     * el contexto del error {@code SCREENING_OVERLAP} en lugar de limitarse a avisar del choque.
+     */
     @Query("""
-            select count(s) > 0
+            select s
             from MovieScreening s
             where s.screenRoom.uuid = :roomUuid
               and (:excludedUuid is null or s.uuid <> :excludedUuid)
               and s.startsAt < :endsAt
               and s.endsAt > :startsAt
+            order by s.startsAt asc
+            limit 1
             """)
-    boolean overlapsInRoom(@Param("roomUuid") UUID roomUuid,
-                           @Param("startsAt") OffsetDateTime startsAt,
-                           @Param("endsAt") OffsetDateTime endsAt,
-                           @Param("excludedUuid") UUID excludedUuid);
+    Optional<MovieScreening> findFirstOverlapInRoom(@Param("roomUuid") UUID roomUuid,
+                                                    @Param("startsAt") OffsetDateTime startsAt,
+                                                    @Param("endsAt") OffsetDateTime endsAt,
+                                                    @Param("excludedUuid") UUID excludedUuid);
 }

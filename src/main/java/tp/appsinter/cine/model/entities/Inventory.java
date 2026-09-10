@@ -8,7 +8,7 @@ import java.math.BigDecimal;
 import java.util.UUID;
 
 /**
- * A concession product sold at the counter.
+ * Producto del candy bar que se vende en el mostrador.
  */
 @Entity
 @Table(name = "inventory")

@@ -47,4 +47,25 @@ public class Movie {
     @Column(name = "actor", nullable = false)
     @Builder.Default
     private List<String> mainCast = new ArrayList<>();
+
+    /**
+     * Campos de presentación del catálogo. Se guardan las direcciones de los recursos, no los
+     * recursos: alojar imágenes queda fuera del alcance del sistema.
+     */
+    @Column(length = 2048)
+    private String posterUrl;
+
+    @Column(length = 2048)
+    private String backdropUrl;
+
+    private Integer releaseYear;
+
+    @Column(length = 16)
+    private String certification;
+
+    @Column(length = 8)
+    private String originalLanguage;
+
+    @Column(length = 2048)
+    private String trailerUrl;
 }

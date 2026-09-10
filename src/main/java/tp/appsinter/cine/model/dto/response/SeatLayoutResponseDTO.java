@@ -6,8 +6,9 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Seat grid for a room. {@code rows} and {@code columns} are the distinct, naturally ordered
- * coordinates so a client can render a grid without inferring the dimensions itself.
+ * Grilla de butacas de una sala. {@code rows} y {@code columns} son las coordenadas distintas y
+ * ordenadas naturalmente, de modo que el cliente puede dibujar la grilla sin deducir sus
+ * dimensiones por su cuenta.
  */
 public record SeatLayoutResponseDTO(
         UUID screenRoomId,

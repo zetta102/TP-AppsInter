@@ -1,8 +1,82 @@
 package tp.appsinter.cine.exception;
 
+import java.time.OffsetDateTime;
+import java.util.Collection;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+
+/**
+ * Regla de negocio incumplida. Se traduce a {@code 422}: a diferencia de un {@code 409}, reintentar
+ * la misma petición sin cambiarla siempre vuelve a fallar.
+ */
 public final class BusinessRuleException extends DomainException {
 
     public BusinessRuleException(String message) {
-        super(message);
+        this(message, ErrorCode.BAD_REQUEST, Map.of());
+    }
+
+    public BusinessRuleException(String message, ErrorCode code, Map<String, Object> context) {
+        super(message, code, context);
+    }
+
+    /**
+     * La función ya comenzó, por lo que no admite reservas ni retenciones nuevas.
+     */
+    public static BusinessRuleException screeningStarted(UUID screeningId, OffsetDateTime startsAt) {
+        return new BusinessRuleException("Screening %s has already started".formatted(screeningId),
+                ErrorCode.SCREENING_STARTED, context("startsAt", startsAt));
+    }
+
+    /**
+     * Las butacas pedidas no pertenecen a la sala donde se proyecta la función.
+     */
+    public static BusinessRuleException seatsWrongRoom(UUID roomId, Collection<UUID> seatIds) {
+        return new BusinessRuleException("All seats must belong to room %s".formatted(roomId),
+                ErrorCode.SEATS_WRONG_ROOM,
+                context("roomId", roomId, "seatIds", seatIds == null ? null : List.copyOf(seatIds)));
+    }
+
+    /**
+     * El stock disponible no cubre la cantidad pedida.
+     */
+    public static BusinessRuleException insufficientStock(String message,
+                                                          UUID inventoryId,
+                                                          int requested,
+                                                          int available) {
+        return new BusinessRuleException(message, ErrorCode.INSUFFICIENT_STOCK,
+                context("inventoryId", inventoryId, "requested", requested, "available", available));
+    }
+
+    /**
+     * La reserva ya estaba cancelada.
+     */
+    public static BusinessRuleException alreadyCancelled(UUID reservationId) {
+        return new BusinessRuleException("Reservation %s is already cancelled".formatted(reservationId),
+                ErrorCode.ALREADY_CANCELLED, Map.of());
+    }
+
+    /**
+     * La grilla pedida no produjo ninguna butaca, normalmente porque {@code skip} tapó todo lo
+     * generado. Crear una sala vacía en silencio sería peor que rechazarlo.
+     */
+    public static BusinessRuleException emptyLayout() {
+        return new BusinessRuleException("The requested layout produces no seats",
+                ErrorCode.VALIDATION_FAILED, Map.of());
+    }
+
+    /**
+     * El cambio de rol dejaría el sistema sin administradores.
+     */
+    public static BusinessRuleException lastAdmin(String message) {
+        return new BusinessRuleException(message, ErrorCode.LAST_ADMIN, Map.of());
+    }
+
+    /**
+     * Un ajuste de stock de cero no describe ningún movimiento y sólo ensuciaría el historial.
+     */
+    public static BusinessRuleException emptyAdjustment() {
+        return new BusinessRuleException("A stock adjustment must not be zero",
+                ErrorCode.VALIDATION_FAILED, Map.of());
     }
 }

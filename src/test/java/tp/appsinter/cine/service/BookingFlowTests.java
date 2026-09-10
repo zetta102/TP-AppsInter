@@ -214,7 +214,7 @@ class BookingFlowTests {
                     new CreateReservationDTO(screening.getUuid(), List.of(premiumSeat.getUuid()), List.of()));
 
             List<SeatAvailabilityResponseDTO> availability =
-                    reservationService.findSeatMap(screening.getUuid()).seats();
+                    reservationService.findSeatMap(screening.getUuid(), null).seats();
 
             assertThat(availability)
                     .extracting(SeatAvailabilityResponseDTO::seatId, SeatAvailabilityResponseDTO::available)

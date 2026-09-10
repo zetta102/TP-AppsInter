@@ -13,7 +13,13 @@ public record CreateMovieResponseDTO(
         Integer runtime,
         String description,
         String director,
-        List<String> mainCast
+        List<String> mainCast,
+        String posterUrl,
+        String backdropUrl,
+        Integer releaseYear,
+        String certification,
+        String originalLanguage,
+        String trailerUrl
 ) {
     public static CreateMovieResponseDTO from(Movie movie) {
         return new CreateMovieResponseDTO(
@@ -23,7 +29,13 @@ public record CreateMovieResponseDTO(
                 movie.getRuntime(),
                 movie.getDescription(),
                 movie.getDirector(),
-                List.copyOf(movie.getMainCast())
+                List.copyOf(movie.getMainCast()),
+                movie.getPosterUrl(),
+                movie.getBackdropUrl(),
+                movie.getReleaseYear(),
+                movie.getCertification(),
+                movie.getOriginalLanguage(),
+                movie.getTrailerUrl()
         );
     }
 }

@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import tp.appsinter.cine.exception.BusinessRuleException;
 import tp.appsinter.cine.exception.ConflictException;
 import tp.appsinter.cine.exception.DomainException;
+import tp.appsinter.cine.exception.ErrorCode;
 import tp.appsinter.cine.exception.NotFoundException;
 
 import java.util.LinkedHashMap;
@@ -27,8 +28,9 @@ public class GlobalExceptionHandler {
     private static final Pattern UNKNOWN_ATTRIBUTE = Pattern.compile("attribute '([^']+)'");
 
     /**
-     * A {@code sort} on a property that does not exist reaches Hibernate as an unresolvable path.
-     * The raw message carries the whole JPQL statement, so it is translated instead of echoed.
+     * Un {@code sort} sobre una propiedad inexistente llega a Hibernate como una ruta irresoluble.
+     * El mensaje original arrastra la sentencia JPQL completa, así que se traduce en lugar de
+     * devolverlo tal cual.
      */
     private static Optional<String> unknownAttribute(Throwable exception) {
         for (Throwable current = exception; current != null; current = current.getCause()) {
@@ -51,7 +53,11 @@ public class GlobalExceptionHandler {
             case ConflictException ignored -> HttpStatus.CONFLICT;
             case BusinessRuleException ignored -> HttpStatus.UNPROCESSABLE_CONTENT;
         };
-        return problem(status, exception.getMessage());
+        ProblemDetail problem = problem(status, exception.getMessage(), exception.getCode());
+        if (!exception.getContext().isEmpty()) {
+            problem.setProperty("context", exception.getContext());
+        }
+        return problem;
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
@@ -59,7 +65,8 @@ public class GlobalExceptionHandler {
         Map<String, String> errors = new LinkedHashMap<>();
         exception.getBindingResult().getFieldErrors()
                 .forEach(error -> errors.putIfAbsent(error.getField(), error.getDefaultMessage()));
-        ProblemDetail problem = problem(HttpStatus.BAD_REQUEST, "Request validation failed");
+        ProblemDetail problem = problem(HttpStatus.BAD_REQUEST, "Request validation failed",
+                ErrorCode.VALIDATION_FAILED);
         problem.setProperty("errors", errors);
         return problem;
     }
@@ -67,42 +74,52 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(IllegalArgumentException.class)
     public ProblemDetail handleIllegalArgument(IllegalArgumentException exception) {
         return unknownAttribute(exception)
-                .map(attribute -> problem(HttpStatus.BAD_REQUEST, "Unknown sort property '%s'".formatted(attribute)))
-                .orElseGet(() -> problem(HttpStatus.BAD_REQUEST, exception.getMessage()));
+                .map(this::sortProblem)
+                .orElseGet(() -> problem(HttpStatus.BAD_REQUEST, exception.getMessage(), ErrorCode.BAD_REQUEST));
     }
 
     /**
-     * Concurrent stock updates lose the {@code @Version} check on commit; the client should simply
-     * retry the request.
+     * Las escrituras concurrentes de stock pierden la comprobación de {@code @Version} al confirmar;
+     * el cliente sólo tiene que reintentar la petición.
      */
     @ExceptionHandler(OptimisticLockingFailureException.class)
     public ProblemDetail handleOptimisticLocking(OptimisticLockingFailureException exception) {
-        return problem(HttpStatus.CONFLICT, "The resource was modified concurrently, please retry");
+        return problem(HttpStatus.CONFLICT, "The resource was modified concurrently, please retry",
+                ErrorCode.OPTIMISTIC_LOCK);
     }
 
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ProblemDetail handleDataIntegrity(DataIntegrityViolationException exception) {
-        return problem(HttpStatus.CONFLICT, "The request conflicts with the current state of the resource");
+        return problem(HttpStatus.CONFLICT, "The request conflicts with the current state of the resource",
+                ErrorCode.CONFLICT);
     }
 
     @ExceptionHandler(PropertyReferenceException.class)
     public ProblemDetail handleUnknownSortProperty(PropertyReferenceException exception) {
-        return problem(HttpStatus.BAD_REQUEST, "Unknown sort property '%s'".formatted(exception.getPropertyName()));
+        return sortProblem(exception.getPropertyName());
     }
 
     @ExceptionHandler(AuthenticationException.class)
     public ProblemDetail handleAuthentication(AuthenticationException exception) {
-        return problem(HttpStatus.UNAUTHORIZED, "Invalid credentials");
+        return problem(HttpStatus.UNAUTHORIZED, "Invalid credentials", ErrorCode.INVALID_CREDENTIALS);
     }
 
     @ExceptionHandler(AccessDeniedException.class)
     public ProblemDetail handleAccessDenied(AccessDeniedException exception) {
-        return problem(HttpStatus.FORBIDDEN, "Access denied");
+        return problem(HttpStatus.FORBIDDEN, "Access denied", ErrorCode.FORBIDDEN);
     }
 
-    private ProblemDetail problem(HttpStatus status, String detail) {
+    private ProblemDetail sortProblem(String attribute) {
+        ProblemDetail problem = problem(HttpStatus.BAD_REQUEST,
+                "Unknown sort property '%s'".formatted(attribute), ErrorCode.INVALID_SORT_PROPERTY);
+        problem.setProperty("context", Map.of("property", attribute));
+        return problem;
+    }
+
+    private ProblemDetail problem(HttpStatus status, String detail, ErrorCode code) {
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(status, detail);
         problem.setTitle(status.getReasonPhrase());
+        problem.setProperty("code", code.name());
         return problem;
     }
 }

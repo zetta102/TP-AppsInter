@@ -3,7 +3,8 @@ package tp.appsinter.cine.model.utils;
 import java.util.Comparator;
 
 /**
- * Orders seat coordinates the way a human reads them, so {@code A2} comes before {@code A10}.
+ * Ordena las coordenadas de butaca como las lee una persona, de modo que {@code A2} viene antes que
+ * {@code A10}.
  */
 public final class SeatCoordinateComparator implements Comparator<String> {
 

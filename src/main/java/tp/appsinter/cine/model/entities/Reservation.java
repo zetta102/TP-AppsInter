@@ -54,6 +54,21 @@ public class Reservation {
     @Column(name = "created_at", nullable = false)
     private OffsetDateTime createdAt;
 
+    /**
+     * Momento de la cancelación, o nulo si la reserva sigue vigente.
+     */
+    @Column(name = "cancelled_at")
+    private OffsetDateTime cancelledAt;
+
+    /**
+     * Importe que la reserva tenía antes de cancelarse.
+     *
+     * <p>Al cancelar, {@code totalPrice} pasa a ser lo que se debe —cero— y este campo conserva lo
+     * que se dejó de cobrar, que es el dato que necesita cualquier informe de ingresos.
+     */
+    @Column(name = "original_total_price", precision = 10, scale = 2)
+    private BigDecimal originalTotalPrice;
+
     @Version
     private Long version;
 

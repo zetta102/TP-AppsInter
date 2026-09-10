@@ -7,8 +7,8 @@ import java.math.BigDecimal;
 import java.util.UUID;
 
 /**
- * A concession product bought alongside the tickets. Name and price are snapshotted so a later
- * catalogue edit cannot rewrite the history of a past purchase.
+ * Producto del candy bar comprado junto con las entradas. El nombre y el precio se copian al
+ * momento de la compra para que una edición posterior del catálogo no reescriba la historia.
  */
 @Entity
 @Table(

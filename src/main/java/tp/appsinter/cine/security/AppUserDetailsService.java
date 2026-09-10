@@ -23,6 +23,7 @@ public class AppUserDetailsService implements UserDetailsService {
     @Transactional(readOnly = true)
     public UserDetails loadUserByUsername(@NonNull String username) throws UsernameNotFoundException {
         User user = userRepository.findByEmailIgnoreCase(username)
+                .filter(candidate -> !candidate.isDeleted())
                 .orElseThrow(() -> new UsernameNotFoundException("User %s not found".formatted(username)));
         return org.springframework.security.core.userdetails.User
                 .withUsername(user.getEmail())

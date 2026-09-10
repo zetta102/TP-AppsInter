@@ -1,19 +1,27 @@
 package tp.appsinter.cine.service;
 
+import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import tp.appsinter.cine.exception.BusinessRuleException;
 import tp.appsinter.cine.exception.ConflictException;
 import tp.appsinter.cine.exception.NotFoundException;
 import tp.appsinter.cine.model.dto.request.CreateInventoryRequestDTO;
+import tp.appsinter.cine.model.dto.request.InventoryAdjustmentRequestDTO;
 import tp.appsinter.cine.model.dto.response.CreateInventoryResponseDTO;
+import tp.appsinter.cine.model.dto.response.InventoryAdjustmentResponseDTO;
 import tp.appsinter.cine.model.dto.response.PageResponseDTO;
+import tp.appsinter.cine.model.dto.response.ProductResponseDTO;
 import tp.appsinter.cine.model.entities.Inventory;
+import tp.appsinter.cine.model.entities.InventoryAdjustment;
 import tp.appsinter.cine.model.utils.ProductCategory;
+import tp.appsinter.cine.repository.InventoryAdjustmentRepository;
 import tp.appsinter.cine.repository.InventoryRepository;
 
+import java.time.OffsetDateTime;
 import java.util.UUID;
 
 @Service
@@ -22,11 +30,65 @@ import java.util.UUID;
 public class InventoryService {
 
     private final InventoryRepository inventoryRepository;
+    private final InventoryAdjustmentRepository inventoryAdjustmentRepository;
+    private final EntityManager entityManager;
+
+    /**
+     * Aplica una variación de stock y la deja asentada.
+     *
+     * <p>Se pide la variación en lugar de la cantidad final porque dos reposiciones simultáneas
+     * tienen que sumarse. La suma ocurre en la base, en una sola sentencia condicionada a que el
+     * resultado no quede negativo, de modo que no hay lectura previa que pueda quedar vieja ni
+     * conflicto de versión que reintentar.
+     */
+    @Transactional
+    public CreateInventoryResponseDTO adjustStock(UUID uuid,
+                                                  InventoryAdjustmentRequestDTO request,
+                                                  String adjustedBy) {
+        Inventory inventory = getInventory(uuid);
+        if (request.delta() == 0) {
+            throw BusinessRuleException.emptyAdjustment();
+        }
+
+        // La sentencia esquiva el contexto de persistencia; sin este vaciado, los cambios pendientes
+        // podrían escribirse después y volver a pisar la cantidad con el valor viejo.
+        entityManager.flush();
+        int updated = inventoryRepository.applyDelta(uuid, request.delta());
+        if (updated == 0) {
+            throw BusinessRuleException.insufficientStock(
+                    "Adjusting %s by %d would leave a negative stock".formatted(
+                            inventory.getProductName(), request.delta()),
+                    uuid, Math.abs(request.delta()), inventory.getQuantity());
+        }
+        entityManager.refresh(inventory);
+
+        inventoryAdjustmentRepository.save(InventoryAdjustment.builder()
+                .inventory(inventory)
+                .delta(request.delta())
+                .resultingStock(inventory.getQuantity())
+                .reason(request.reason())
+                .adjustedBy(adjustedBy)
+                .createdAt(OffsetDateTime.now())
+                .build());
+        return CreateInventoryResponseDTO.from(inventory);
+    }
+
+    /**
+     * Historial de movimientos de un producto, del más reciente al más antiguo.
+     */
+    public PageResponseDTO<InventoryAdjustmentResponseDTO> findAdjustments(UUID uuid, Pageable pageable) {
+        getInventory(uuid);
+        return PageResponseDTO.from(
+                inventoryAdjustmentRepository.findByInventoryUuid(uuid, pageable),
+                InventoryAdjustmentResponseDTO::from);
+    }
 
     @Transactional
     public CreateInventoryResponseDTO create(CreateInventoryRequestDTO request) {
         if (inventoryRepository.existsByProductNameIgnoreCase(request.productName())) {
-            throw new ConflictException("Product '%s' already exists".formatted(request.productName()));
+            throw ConflictException.nameTaken(
+                    "Product '%s' already exists".formatted(request.productName()),
+                    "productName", request.productName());
         }
         Inventory inventory = Inventory.builder()
                 .productName(request.productName())
@@ -40,18 +102,34 @@ public class InventoryService {
     public PageResponseDTO<CreateInventoryResponseDTO> findAll(ProductCategory category,
                                                                String search,
                                                                Pageable pageable) {
+        return PageResponseDTO.from(search(category, search, pageable), CreateInventoryResponseDTO::from);
+    }
+
+    /**
+     * Misma búsqueda que {@link #findAll}, pero proyectada al catálogo público: sin stock ni costo.
+     */
+    public PageResponseDTO<ProductResponseDTO> findAllProducts(ProductCategory category,
+                                                               String search,
+                                                               Pageable pageable) {
+        return PageResponseDTO.from(search(category, search, pageable), ProductResponseDTO::from);
+    }
+
+    public ProductResponseDTO findProductById(UUID uuid) {
+        return ProductResponseDTO.from(getInventory(uuid));
+    }
+
+    private Page<Inventory> search(ProductCategory category, String search, Pageable pageable) {
         String term = search == null || search.isBlank() ? null : search.trim();
-        Page<Inventory> page;
         if (category != null && term != null) {
-            page = inventoryRepository.findByCategoryAndProductNameContainingIgnoreCase(category, term, pageable);
-        } else if (category != null) {
-            page = inventoryRepository.findByCategory(category, pageable);
-        } else if (term != null) {
-            page = inventoryRepository.findByProductNameContainingIgnoreCase(term, pageable);
-        } else {
-            page = inventoryRepository.findAll(pageable);
+            return inventoryRepository.findByCategoryAndProductNameContainingIgnoreCase(category, term, pageable);
         }
-        return PageResponseDTO.from(page, CreateInventoryResponseDTO::from);
+        if (category != null) {
+            return inventoryRepository.findByCategory(category, pageable);
+        }
+        if (term != null) {
+            return inventoryRepository.findByProductNameContainingIgnoreCase(term, pageable);
+        }
+        return inventoryRepository.findAll(pageable);
     }
 
     public CreateInventoryResponseDTO findById(UUID uuid) {
@@ -62,7 +140,9 @@ public class InventoryService {
     public CreateInventoryResponseDTO update(UUID uuid, CreateInventoryRequestDTO request) {
         Inventory inventory = getInventory(uuid);
         if (inventoryRepository.existsByProductNameIgnoreCaseAndUuidNot(request.productName(), uuid)) {
-            throw new ConflictException("Product '%s' already exists".formatted(request.productName()));
+            throw ConflictException.nameTaken(
+                    "Product '%s' already exists".formatted(request.productName()),
+                    "productName", request.productName());
         }
         inventory.setProductName(request.productName());
         inventory.setCategory(request.category());
