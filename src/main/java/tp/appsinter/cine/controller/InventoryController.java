@@ -1,11 +1,10 @@
 package tp.appsinter.cine.controller;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
-import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -40,7 +39,12 @@ public class InventoryController {
     public PageResponseDTO<CreateInventoryResponseDTO> findAll(
             @RequestParam(required = false) ProductCategory category,
             @RequestParam(required = false) String search,
-            @PageableDefault(size = 20, sort = "productName") Pageable pageable) {
+            @Schema(description = "Página de productos", example = """
+                    {
+                      "page": 0,
+                      "size": 20,
+                      "sort": "productName"
+                    }""") Pageable pageable) {
         return inventoryService.findAll(category, search, pageable);
     }
 
@@ -81,7 +85,12 @@ public class InventoryController {
     @GetMapping("/{uuid}/adjustments")
     public PageResponseDTO<InventoryAdjustmentResponseDTO> findAdjustments(
             @PathVariable UUID uuid,
-            @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable) {
+            @Schema(description = "Página de productos", example = """
+                    {
+                      "page": 0,
+                      "size": 20,
+                      "sort": "createdAt"
+                    }""") Pageable pageable) {
         return inventoryService.findAdjustments(uuid, pageable);
     }
 }

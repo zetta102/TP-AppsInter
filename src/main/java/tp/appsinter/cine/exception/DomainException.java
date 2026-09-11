@@ -1,5 +1,7 @@
 package tp.appsinter.cine.exception;
 
+import lombok.Getter;
+
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -11,10 +13,20 @@ import java.util.Map;
  * específico del código. Ambos se publican en la respuesta RFC 7807 para que el cliente pueda
  * reaccionar sin interpretar el mensaje humano, que está localizado.
  */
+@Getter
 public sealed abstract class DomainException extends RuntimeException
         permits NotFoundException, ConflictException, BusinessRuleException {
 
+    /**
+     * -- GETTER --
+     *  Código estable y no localizado que identifica la falla.
+     */
     private final ErrorCode code;
+    /**
+     * -- GETTER --
+     *  Datos adicionales asociados al código. Nunca es
+     * ; puede estar vacío.
+     */
     private final transient Map<String, Object> context;
 
     protected DomainException(String message, ErrorCode code, Map<String, Object> context) {
@@ -41,17 +53,4 @@ public sealed abstract class DomainException extends RuntimeException
         return context;
     }
 
-    /**
-     * Código estable y no localizado que identifica la falla.
-     */
-    public ErrorCode getCode() {
-        return code;
-    }
-
-    /**
-     * Datos adicionales asociados al código. Nunca es {@code null}; puede estar vacío.
-     */
-    public Map<String, Object> getContext() {
-        return context;
-    }
 }

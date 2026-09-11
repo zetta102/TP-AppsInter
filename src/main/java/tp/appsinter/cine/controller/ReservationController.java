@@ -1,12 +1,12 @@
 package tp.appsinter.cine.controller;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
-import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
@@ -47,7 +47,12 @@ public class ReservationController {
     public PageResponseDTO<CreateReservationResponseDTO> findMine(
             Authentication authentication,
             ReservationFilterDTO filter,
-            @PageableDefault(size = 20, sort = "createdAt") Pageable pageable) {
+            @Schema(description = "Página de reservas", example = """
+                    {
+                      "page": 0,
+                      "size": 20,
+                      "sort": "createdAt"
+                    }""") Pageable pageable) {
         return reservationService.findMine(authentication.getName(), filter, translateSort(pageable));
     }
 
@@ -58,7 +63,12 @@ public class ReservationController {
     public PageResponseDTO<CreateReservationResponseDTO> findAll(
             Authentication authentication,
             ReservationFilterDTO filter,
-            @PageableDefault(size = 20, sort = "createdAt") Pageable pageable) {
+            @Schema(description = "Página de reservas", example = """
+                    {
+                      "page": 0,
+                      "size": 20,
+                      "sort": "createdAt"
+                    }""") Pageable pageable) {
         if (!isAdmin(authentication)) {
             throw new AccessDeniedException("Only administrators can list every reservation");
         }

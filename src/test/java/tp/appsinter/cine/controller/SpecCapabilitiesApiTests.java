@@ -306,7 +306,7 @@ class SpecCapabilitiesApiTests {
 
             mockMvc.perform(post("/api/reservations/" + reservationId + "/cancellation")
                             .header(HttpHeaders.AUTHORIZATION, token))
-                    .andExpect(status().isUnprocessableEntity())
+                    .andExpect(status().isUnprocessableContent())
                     .andExpect(jsonPath("$.code").value("ALREADY_CANCELLED"));
 
             book(bearer(OTHER_EMAIL), seatA1.getUuid());
@@ -488,7 +488,7 @@ class SpecCapabilitiesApiTests {
                             .content("""
                                     {"role":"CUSTOMER"}
                                     """))
-                    .andExpect(status().isUnprocessableEntity())
+                    .andExpect(status().isUnprocessableContent())
                     .andExpect(jsonPath("$.code").value("LAST_ADMIN"));
 
             mockMvc.perform(patch("/api/users/" + customerId + "/role")
@@ -545,7 +545,7 @@ class SpecCapabilitiesApiTests {
                             .content("""
                                     {"delta":-100,"reason":"typo"}
                                     """))
-                    .andExpect(status().isUnprocessableEntity())
+                    .andExpect(status().isUnprocessableContent())
                     .andExpect(jsonPath("$.code").value("INSUFFICIENT_STOCK"))
                     .andExpect(jsonPath("$.context.available").value(6));
 

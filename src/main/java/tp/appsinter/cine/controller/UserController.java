@@ -1,10 +1,10 @@
 package tp.appsinter.cine.controller;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
@@ -26,10 +26,17 @@ public class UserController {
 
     private final UserService userService;
 
+    // TODO: replicar en el resto de pageables
     @GetMapping
     public PageResponseDTO<CreateUserResponseDTO> findAll(
             @RequestParam(required = false) Role role,
-            @PageableDefault(size = 20, sort = "email") Pageable pageable) {
+            @Schema(description = "Página de usuarios", example = """
+                    {
+                      "page": 0,
+                      "size": 20,
+                      "sort": "email,firstName"
+                    }""")
+            Pageable pageable) {
         return userService.findAll(role, pageable);
     }
 

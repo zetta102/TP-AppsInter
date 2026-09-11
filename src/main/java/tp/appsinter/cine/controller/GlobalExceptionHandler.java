@@ -10,11 +10,7 @@ import org.springframework.security.core.AuthenticationException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
-import tp.appsinter.cine.exception.BusinessRuleException;
-import tp.appsinter.cine.exception.ConflictException;
-import tp.appsinter.cine.exception.DomainException;
-import tp.appsinter.cine.exception.ErrorCode;
-import tp.appsinter.cine.exception.NotFoundException;
+import tp.appsinter.cine.exception.*;
 
 import java.util.LinkedHashMap;
 import java.util.Map;

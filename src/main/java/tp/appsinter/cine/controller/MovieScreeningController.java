@@ -1,10 +1,10 @@
 package tp.appsinter.cine.controller;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.web.PageableDefault;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -45,7 +45,12 @@ public class MovieScreeningController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime to,
             @RequestParam(defaultValue = "true") boolean includeAvailability,
-            @PageableDefault(size = 20, sort = "startsAt") Pageable pageable) {
+            @Schema(description = "Página de funciones de cine", example = """
+                    {
+                      "page": 0,
+                      "size": 20,
+                      "sort": "startsAt"
+                    }""") Pageable pageable) {
         return movieScreeningService.search(movieId, roomId, from, to, upcomingOnly, includeAvailability, pageable);
     }
 

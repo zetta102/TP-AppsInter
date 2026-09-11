@@ -1,16 +1,12 @@
 package tp.appsinter.cine.controller;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
-import org.springframework.data.web.PageableDefault;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 import tp.appsinter.cine.model.dto.response.PageResponseDTO;
 import tp.appsinter.cine.model.dto.response.ProductResponseDTO;
 import tp.appsinter.cine.model.utils.ProductCategory;
@@ -43,7 +39,12 @@ public class ProductController {
     public PageResponseDTO<ProductResponseDTO> findAll(
             @RequestParam(required = false) ProductCategory category,
             @RequestParam(required = false) String search,
-            @PageableDefault(size = 20, sort = "productName") Pageable pageable) {
+            @Schema(description = "Página de productos", example = """
+                    {
+                      "page": 0,
+                      "size": 20,
+                      "sort": "productName"
+                    }""") Pageable pageable) {
         return inventoryService.findAllProducts(category, search, translateSort(pageable));
     }
 

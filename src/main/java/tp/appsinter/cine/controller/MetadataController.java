@@ -11,13 +11,7 @@ import org.springframework.web.context.request.WebRequest;
 import tp.appsinter.cine.config.SeatHoldProperties;
 import tp.appsinter.cine.model.dto.response.EnumValueResponseDTO;
 import tp.appsinter.cine.model.dto.response.MetadataConfigResponseDTO;
-import tp.appsinter.cine.model.utils.BusinessConstants;
-import tp.appsinter.cine.model.utils.MovieGenre;
-import tp.appsinter.cine.model.utils.ProductCategory;
-import tp.appsinter.cine.model.utils.ReservationStatus;
-import tp.appsinter.cine.model.utils.Role;
-import tp.appsinter.cine.model.utils.ScreenRoomType;
-import tp.appsinter.cine.model.utils.SeatType;
+import tp.appsinter.cine.model.utils.*;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
@@ -48,6 +42,13 @@ public class MetadataController {
 
     private final SeatHoldProperties seatHoldProperties;
 
+    private static <E extends Enum<E>> List<EnumValueResponseDTO> describe(E[] values,
+                                                                           Function<E, String> label) {
+        return Arrays.stream(values)
+                .map(value -> new EnumValueResponseDTO(value.name(), label.apply(value)))
+                .toList();
+    }
+
     /**
      * Valores y etiquetas de todas las enumeraciones del contrato.
      */
@@ -74,13 +75,6 @@ public class MetadataController {
                 BusinessConstants.CURRENCY,
                 seatHoldProperties.ttl().toSeconds());
         return conditional(request, body, body.toString());
-    }
-
-    private static <E extends Enum<E>> List<EnumValueResponseDTO> describe(E[] values,
-                                                                           Function<E, String> label) {
-        return Arrays.stream(values)
-                .map(value -> new EnumValueResponseDTO(value.name(), label.apply(value)))
-                .toList();
     }
 
     /**

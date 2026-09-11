@@ -1,10 +1,10 @@
 package tp.appsinter.cine.controller;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -37,7 +37,12 @@ public class MovieController {
             @RequestParam(required = false) String search,
             @RequestParam(required = false) List<MovieGenre> genre,
             @RequestParam(required = false) Integer releaseYear,
-            @PageableDefault(size = 20, sort = "movieName") Pageable pageable) {
+            @Schema(description = "Página de películas", example = """
+                    {
+                      "page": 0,
+                      "size": 20,
+                      "sort": "movieName"
+                    }""") Pageable pageable) {
         return movieService.findAll(search, genre, releaseYear, pageable);
     }
 
