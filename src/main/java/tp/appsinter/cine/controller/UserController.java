@@ -26,7 +26,6 @@ public class UserController {
 
     private final UserService userService;
 
-    // TODO: replicar en el resto de pageables
     @GetMapping
     public PageResponseDTO<CreateUserResponseDTO> findAll(
             @RequestParam(required = false) Role role,
