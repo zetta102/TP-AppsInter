@@ -19,6 +19,13 @@ public sealed abstract class DomainException extends RuntimeException
         permits NotFoundException, ConflictException, BusinessRuleException {
 
     /**
+     * Clave de contexto reservada para errores por campo ({@code Map<String, String>}). El manejador
+     * global la publica como la propiedad {@code errors}, igual que la validación de Bean Validation,
+     * en lugar de dentro de {@code context}.
+     */
+    public static final String FIELD_ERRORS = "errors";
+
+    /**
      * Código estable y no localizado que identifica la falla.
      */
     private final ErrorCode code;

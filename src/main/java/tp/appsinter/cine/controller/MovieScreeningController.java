@@ -3,6 +3,7 @@ package tp.appsinter.cine.controller;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.jspecify.annotations.Nullable;
 import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Pageable;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -41,6 +42,7 @@ public class MovieScreeningController {
 
     @GetMapping
     public PageResponseDTO<CreateMovieScreeningResponseDTO> findAll(
+            Authentication authentication,
             @RequestParam(defaultValue = "false") boolean upcomingOnly,
             @RequestParam(required = false) UUID movieId,
             @RequestParam(required = false) UUID roomId,
@@ -49,14 +51,15 @@ public class MovieScreeningController {
             @RequestParam(defaultValue = "true") boolean includeAvailability,
             @ParameterObject Pageable pageable) {
         return movieScreeningService.search(movieId, roomId, from, to, upcomingOnly, includeAvailability,
-                SORTABLE.apply(pageable));
+                viewer(authentication), SORTABLE.apply(pageable));
     }
 
     @GetMapping("/{uuid}")
     public CreateMovieScreeningResponseDTO findById(
+            Authentication authentication,
             @PathVariable UUID uuid,
             @RequestParam(defaultValue = "true") boolean includeAvailability) {
-        return movieScreeningService.findById(uuid, includeAvailability);
+        return movieScreeningService.findById(uuid, includeAvailability, viewer(authentication));
     }
 
     /**
@@ -65,7 +68,7 @@ public class MovieScreeningController {
      */
     @GetMapping("/{uuid}/seats")
     public SeatMapResponseDTO findSeatMap(Authentication authentication, @PathVariable UUID uuid) {
-        return reservationService.findSeatMap(uuid, authentication == null ? null : authentication.getName());
+        return reservationService.findSeatMap(uuid, viewer(authentication));
     }
 
     @PutMapping("/{uuid}")
@@ -78,5 +81,13 @@ public class MovieScreeningController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable UUID uuid) {
         movieScreeningService.delete(uuid);
+    }
+
+    /**
+     * Correo de quien consulta, o {@code null} si es anónimo. Estos endpoints son públicos: la
+     * identidad sólo sirve para no contar los bloqueos propios como butacas ocupadas.
+     */
+    private static @Nullable String viewer(@Nullable Authentication authentication) {
+        return authentication == null ? null : authentication.getName();
     }
 }

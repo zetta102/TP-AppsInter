@@ -17,6 +17,8 @@ import tp.appsinter.cine.exception.ConflictException;
 import tp.appsinter.cine.exception.ErrorCode;
 import tp.appsinter.cine.model.dto.request.CreateMovieScreeningDTO;
 import tp.appsinter.cine.model.dto.request.CreateReservationDTO;
+import tp.appsinter.cine.model.dto.request.CreateSeatHoldDTO;
+import tp.appsinter.cine.model.dto.request.CreateSeatRequestDTO;
 import tp.appsinter.cine.model.dto.response.CreateReservationResponseDTO;
 import tp.appsinter.cine.model.dto.response.SeatAvailabilityResponseDTO;
 import tp.appsinter.cine.model.entities.*;
@@ -44,6 +46,10 @@ class BookingFlowTests {
     private ReservationService reservationService;
     @Autowired
     private MovieScreeningService movieScreeningService;
+    @Autowired
+    private SeatService seatService;
+    @Autowired
+    private SeatHoldService seatHoldService;
     @Autowired
     private ReservationRepository reservationRepository;
     @Autowired
@@ -224,8 +230,121 @@ class BookingFlowTests {
     }
 
     @Nested
+    @DisplayName("when editing a sold seat")
+    class EditSoldSeat {
+
+        @Test
+        @DisplayName("refuses to move it but still allows changing its type")
+        void protectsTicketHistory() {
+            reservationService.createReservation(customer.getEmail(),
+                    new CreateReservationDTO(screening.getUuid(), List.of(normalSeat.getUuid()), List.of()));
+            UUID roomId = screening.getScreenRoom().getUuid();
+
+            assertThatThrownBy(() -> seatService.update(normalSeat.getUuid(),
+                    new CreateSeatRequestDTO(roomId, "Z", "9", SeatType.NORMAL)))
+                    .isInstanceOfSatisfying(ConflictException.class,
+                            ex -> assertThat(ex.getCode()).isEqualTo(ErrorCode.RESOURCE_IN_USE));
+
+            assertThat(seatService.update(normalSeat.getUuid(),
+                    new CreateSeatRequestDTO(roomId, "a", " 1 ", SeatType.PREMIUM)).seatType())
+                    .isEqualTo(SeatType.PREMIUM);
+        }
+    }
+
+    @Nested
+    @DisplayName("seat holds by other customers")
+    class HoldsByOthers {
+
+        private User other;
+
+        @BeforeEach
+        void createOtherCustomer() {
+            other = userRepository.save(User.builder()
+                    .firstName("Grace")
+                    .lastName("Hopper")
+                    .email("grace@example.com")
+                    .password("{noop}secret")
+                    .role(Role.CUSTOMER)
+                    .build());
+        }
+
+        @Test
+        @DisplayName("are subtracted from screening availability, except for their owner")
+        void reduceAvailability() {
+            seatHoldService.create(screening.getUuid(), other.getEmail(),
+                    new CreateSeatHoldDTO(List.of(normalSeat.getUuid())));
+
+            var anonymous = movieScreeningService.findById(screening.getUuid(), true, null);
+            assertAll(
+                    () -> assertThat(anonymous.totalSeats()).isEqualTo(2),
+                    () -> assertThat(anonymous.availableSeats()).isEqualTo(1),
+                    () -> assertThat(anonymous.heldSeats()).isEqualTo(1),
+                    () -> assertThat(anonymous.soldOut()).isFalse());
+
+            var owner = movieScreeningService.findById(screening.getUuid(), true, other.getEmail());
+            assertAll(
+                    () -> assertThat(owner.availableSeats()).isEqualTo(2),
+                    () -> assertThat(owner.heldSeats()).isZero());
+        }
+
+        @Test
+        @DisplayName("make the quote fail just like the purchase would")
+        void blockQuotes() {
+            seatHoldService.create(screening.getUuid(), other.getEmail(),
+                    new CreateSeatHoldDTO(List.of(normalSeat.getUuid())));
+
+            assertThatThrownBy(() -> reservationService.quote(customer.getEmail(),
+                    new CreateReservationDTO(screening.getUuid(), List.of(normalSeat.getUuid()), List.of())))
+                    .isInstanceOfSatisfying(ConflictException.class,
+                            ex -> assertThat(ex.getCode()).isEqualTo(ErrorCode.SEATS_UNAVAILABLE));
+        }
+
+        @Test
+        @DisplayName("let their owner quote with the hold without consuming it")
+        void quoteWithOwnHold() {
+            var hold = seatHoldService.create(screening.getUuid(), other.getEmail(),
+                    new CreateSeatHoldDTO(List.of(normalSeat.getUuid())));
+
+            var quote = reservationService.quote(other.getEmail(), new CreateReservationDTO(
+                    screening.getUuid(), List.of(normalSeat.getUuid()), List.of(), hold.uuid()));
+
+            assertThat(quote.totalPrice()).isEqualByComparingTo("10.00");
+            assertThat(seatHoldService.findById(hold.uuid(), other.getEmail()).uuid()).isEqualTo(hold.uuid());
+        }
+    }
+
+    @Nested
     @DisplayName("when rescheduling a screening")
     class RescheduleScreening {
+
+        @Test
+        @DisplayName("refuses to create a screening in the past")
+        void refusesPastStart() {
+            assertThatThrownBy(() -> movieScreeningService.create(new CreateMovieScreeningDTO(
+                    screening.getMovie().getUuid(), screening.getScreenRoom().getUuid(),
+                    OffsetDateTime.now().minusHours(1), new BigDecimal("10.00"))))
+                    .isInstanceOfSatisfying(BusinessRuleException.class,
+                            ex -> assertThat(ex.getCode()).isEqualTo(ErrorCode.VALIDATION_FAILED));
+        }
+
+        @Test
+        @DisplayName("lets a started screening change only its price")
+        void editsStartedScreeningPrice() {
+            screening.setStartsAt(OffsetDateTime.now().minusMinutes(10));
+            movieScreeningRepository.save(screening);
+            UUID movieId = screening.getMovie().getUuid();
+            UUID roomId = screening.getScreenRoom().getUuid();
+            OffsetDateTime startsAt = movieScreeningRepository.findById(screening.getUuid()).orElseThrow().getStartsAt();
+
+            assertThat(movieScreeningService.update(screening.getUuid(), new CreateMovieScreeningDTO(
+                    movieId, roomId, startsAt, new BigDecimal("8.00"))).basePrice())
+                    .isEqualByComparingTo("8.00");
+
+            assertThatThrownBy(() -> movieScreeningService.update(screening.getUuid(), new CreateMovieScreeningDTO(
+                    movieId, roomId, OffsetDateTime.now().plusDays(3), new BigDecimal("8.00"))))
+                    .isInstanceOfSatisfying(BusinessRuleException.class,
+                            ex -> assertThat(ex.getCode()).isEqualTo(ErrorCode.SCREENING_STARTED));
+        }
 
         @Test
         @DisplayName("refuses to move a screening with tickets sold but still allows a price change")

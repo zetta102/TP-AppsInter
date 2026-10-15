@@ -71,13 +71,8 @@ public class ReservationService {
         // Serializa la compra con los bloqueos de la misma función: la comprobación de bloqueos
         // ajenos de más abajo no está respaldada por ningún índice único.
         movieScreeningService.lockScreening(request.movieScreeningId());
-        if (request.holdId() != null) {
-            // Se consume antes de validar el resto para que el bloqueo deje de contar como ajeno y
-            // no se rechace la compra por chocar con la reserva temporal del propio comprador.
-            seatHoldService.consume(request.holdId(), userEmail, request.movieScreeningId(), request.seatIds());
-        }
         PricedBasket basket = price(request);
-        seatHoldService.requireNotHeldByOthers(request.movieScreeningId(), request.seatIds(), user.getUuid());
+        checkHolds(request, user, true);
         MovieScreening screening = basket.screening();
 
         Reservation reservation = Reservation.builder()
@@ -124,12 +119,15 @@ public class ReservationService {
     /**
      * Calcula lo que costaría una reserva sin crearla.
      *
-     * <p>Recorre exactamente la misma cadena de validación que el alta, así que un presupuesto que
-     * responde 200 es también una reserva que se puede confirmar —salvo que alguien se adelante a
-     * tomar las butacas— y los mismos 404, 409 y 422 aparecen acá primero.
+     * <p>Recorre exactamente la misma cadena de validación que el alta, incluidos los bloqueos de
+     * butacas, así que un presupuesto que responde 200 es también una reserva que se puede confirmar
+     * —salvo que alguien se adelante a tomar las butacas— y los mismos 404, 409 y 422 aparecen acá
+     * primero. El {@code holdId}, si viene, se comprueba pero no se consume.
      */
-    public ReservationQuoteResponseDTO quote(CreateReservationDTO request) {
+    public ReservationQuoteResponseDTO quote(String userEmail, CreateReservationDTO request) {
+        User user = userService.getByEmail(userEmail);
         PricedBasket basket = price(request);
+        checkHolds(request, user, false);
         return new ReservationQuoteResponseDTO(
                 basket.seats().stream()
                         .map(seat -> new ReservationQuoteResponseDTO.QuotedTicket(
@@ -150,6 +148,26 @@ public class ReservationService {
                 basket.ticketsTotal(),
                 basket.itemsTotal(),
                 basket.totalPrice());
+    }
+
+    /**
+     * Últimas comprobaciones de la cadena, compartidas por presupuesto y alta: el bloqueo indicado
+     * tiene que servir para esta compra, y ninguna butaca puede estar bloqueada por otro cliente.
+     * Los bloqueos propios nunca cuentan como ajenos.
+     *
+     * @param consume {@code true} al confirmar: el bloqueo queda liberado junto con la compra
+     */
+    private void checkHolds(CreateReservationDTO request, User buyer, boolean consume) {
+        if (request.holdId() != null) {
+            if (consume) {
+                seatHoldService.consume(request.holdId(), buyer.getEmail(), request.movieScreeningId(),
+                        request.seatIds());
+            } else {
+                seatHoldService.requireUsable(request.holdId(), buyer.getEmail(), request.movieScreeningId(),
+                        request.seatIds());
+            }
+        }
+        seatHoldService.requireNotHeldByOthers(request.movieScreeningId(), request.seatIds(), buyer.getUuid());
     }
 
     /**
@@ -373,7 +391,9 @@ public class ReservationService {
                         .map(seat -> SeatAvailabilityResponseDTO.of(
                                 seat,
                                 !booked.contains(seat.getUuid()) && !held.contains(seat.getUuid()),
-                                held.contains(seat.getUuid())))
+                                // Vendida gana sobre bloqueada: un bloqueo que quedó vivo sobre una
+                                // butaca ya vendida no debe mostrarla como «alguien la está comprando».
+                                !booked.contains(seat.getUuid()) && held.contains(seat.getUuid())))
                         .toList());
     }
 

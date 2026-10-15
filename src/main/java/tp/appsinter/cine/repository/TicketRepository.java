@@ -22,6 +22,11 @@ public interface TicketRepository extends JpaRepository<Ticket, UUID> {
      */
     boolean existsByMovieScreeningUuidAndCancelledAtIsNull(UUID movieScreeningUuid);
 
+    /**
+     * Indica si la butaca figura en alguna entrada, vigente o cancelada: ambas son historial.
+     */
+    boolean existsBySeatUuid(UUID seatUuid);
+
     @Query("""
             select t.seat.uuid from Ticket t
             where t.movieScreening.uuid = :screeningUuid and t.cancelledAt is null

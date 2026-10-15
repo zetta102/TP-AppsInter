@@ -125,8 +125,23 @@ public class SeatHoldService {
     @Transactional
     public void consume(UUID uuid, String userEmail, UUID screeningUuid, Collection<UUID> seatIds) {
         OffsetDateTime now = OffsetDateTime.now();
-        SeatHold hold = getLiveHold(uuid, userEmail, now);
+        requireUsable(uuid, userEmail, screeningUuid, seatIds, now).setReleasedAt(now);
+    }
 
+    /**
+     * Comprueba, sin consumirlo, que el bloqueo serviría para esta compra. Lo usa el presupuesto,
+     * para que un {@code holdId} vencido o ajeno falle ya al presupuestar y no recién al confirmar.
+     */
+    public void requireUsable(UUID uuid, String userEmail, UUID screeningUuid, Collection<UUID> seatIds) {
+        requireUsable(uuid, userEmail, screeningUuid, seatIds, OffsetDateTime.now());
+    }
+
+    private SeatHold requireUsable(UUID uuid,
+                                   String userEmail,
+                                   UUID screeningUuid,
+                                   Collection<UUID> seatIds,
+                                   OffsetDateTime now) {
+        SeatHold hold = getLiveHold(uuid, userEmail, now);
         if (!hold.getMovieScreening().getUuid().equals(screeningUuid)) {
             throw new NotFoundException("Seat hold does not belong to this screening", "Seat hold");
         }
@@ -135,7 +150,7 @@ public class SeatHoldService {
             throw ConflictException.seatsUnavailable(
                     "The hold does not cover every requested seat", seatIds);
         }
-        hold.setReleasedAt(now);
+        return hold;
     }
 
     /**

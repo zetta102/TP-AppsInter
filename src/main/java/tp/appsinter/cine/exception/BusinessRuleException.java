@@ -75,6 +75,16 @@ public final class BusinessRuleException extends DomainException {
     }
 
     /**
+     * Un campo es inválido por una regla que depende del estado y no puede expresarse con Bean
+     * Validation, por ejemplo «la fecha debe ser futura sólo si cambia». Se publica con el mismo
+     * sobre que la validación de cuerpos: {@code 400 VALIDATION_FAILED} con {@code errors}.
+     */
+    public static BusinessRuleException invalidField(String field, String message) {
+        return new BusinessRuleException("Request validation failed", ErrorCode.VALIDATION_FAILED,
+                Map.of(FIELD_ERRORS, Map.of(field, message)));
+    }
+
+    /**
      * La contraseña vigente informada al cambiarla no coincide.
      */
     public static BusinessRuleException wrongPassword() {

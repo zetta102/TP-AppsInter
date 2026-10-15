@@ -1,5 +1,6 @@
 package tp.appsinter.cine.repository;
 
+import org.jspecify.annotations.Nullable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -58,6 +59,34 @@ public interface SeatHoldRepository extends JpaRepository<SeatHold, UUID> {
     List<UUID> findHeldSeatIds(@Param("screeningUuid") UUID screeningUuid,
                                @Param("viewerUuid") UUID viewerUuid,
                                @Param("now") OffsetDateTime now);
+
+    /**
+     * Butacas bloqueadas y vigentes por función para un conjunto de funciones, en una sola consulta.
+     *
+     * <p>Es la tercera pata de la disponibilidad de la cartelera, junto con la capacidad y las
+     * entradas vendidas. Cuenta cada butaca una sola vez aunque figure en varios bloqueos, y descarta
+     * las que ya están vendidas para no restarlas dos veces. Las funciones sin bloqueos no aparecen.
+     *
+     * @param viewerUuid quien mira; sus propios bloqueos no cuentan, o {@code null} para contar todos
+     */
+    @Query("""
+            select h.movieScreening.uuid, count(distinct seat.uuid)
+            from SeatHold h
+            join h.seats seat
+            where h.movieScreening.uuid in :screeningUuids
+              and (:viewerUuid is null or h.user.uuid <> :viewerUuid)
+              and h.releasedAt is null
+              and h.expiresAt > :now
+              and not exists (
+                  select t.uuid from Ticket t
+                  where t.movieScreening = h.movieScreening
+                    and t.seat = seat
+                    and t.cancelledAt is null)
+            group by h.movieScreening.uuid
+            """)
+    List<Object[]> countHeldByScreening(@Param("screeningUuids") Collection<UUID> screeningUuids,
+                                        @Param("viewerUuid") @Nullable UUID viewerUuid,
+                                        @Param("now") OffsetDateTime now);
 
     /**
      * Borra los bloqueos ya inertes. Es sólo higiene de la tabla.

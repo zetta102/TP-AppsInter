@@ -14,6 +14,7 @@ import tp.appsinter.cine.exception.NotFoundException;
 import tp.appsinter.cine.security.RefreshTokenReusedException;
 
 import java.sql.SQLException;
+import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Stream;
 
@@ -42,6 +43,19 @@ class GlobalExceptionHandlerTest {
                             .isEqualTo(exception.getCode().status().value());
                     assertThat(problem.getProperties()).containsEntry("code", exception.getCode().name());
                 });
+    }
+
+    @Test
+    @DisplayName("publishes service-side field errors like bean validation errors")
+    void fieldErrorsUseTheValidationEnvelope() {
+        ProblemDetail problem = handler.handleDomain(
+                BusinessRuleException.invalidField("startsAt", "must be a future date"));
+
+        assertThat(problem.getStatus()).isEqualTo(400);
+        assertThat(problem.getProperties())
+                .containsEntry("code", "VALIDATION_FAILED")
+                .containsEntry("errors", Map.of("startsAt", "must be a future date"))
+                .doesNotContainKey("context");
     }
 
     @Test

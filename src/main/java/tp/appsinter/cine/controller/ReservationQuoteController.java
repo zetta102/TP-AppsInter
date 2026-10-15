@@ -3,6 +3,7 @@ package tp.appsinter.cine.controller;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
@@ -32,9 +33,13 @@ public class ReservationQuoteController {
      *
      * <p>El cuerpo es idéntico al del alta de reservas, incluido el nombre {@code products} para la
      * confitería; reusarlo evita que presupuestar y confirmar acepten formas distintas.
+     *
+     * <p>Necesita saber quién pregunta porque los bloqueos de butacas propios no cuentan como
+     * ocupación, y el {@code holdId}, si viene, tiene que ser de quien presupuesta.
      */
     @PostMapping({"/api/reservations:quote", "/api/reservations/quote"})
-    public ReservationQuoteResponseDTO quote(@Valid @RequestBody CreateReservationDTO request) {
-        return reservationService.quote(request);
+    public ReservationQuoteResponseDTO quote(Authentication authentication,
+                                             @Valid @RequestBody CreateReservationDTO request) {
+        return reservationService.quote(authentication.getName(), request);
     }
 }

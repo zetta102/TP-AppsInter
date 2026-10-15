@@ -20,7 +20,7 @@ import java.util.UUID;
 public record CreateReservationDTO(
         @NotNull UUID movieScreeningId,
         @NotEmpty List<UUID> seatIds,
-        @Valid List<@NotNull ReservationItemRequestDTO> products,
+        List<@NotNull @Valid ReservationItemRequestDTO> products,
         UUID holdId
 ) {
     public CreateReservationDTO {

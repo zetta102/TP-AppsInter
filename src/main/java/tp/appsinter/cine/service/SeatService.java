@@ -17,6 +17,7 @@ import tp.appsinter.cine.model.entities.Seat;
 import tp.appsinter.cine.model.utils.Position;
 import tp.appsinter.cine.model.utils.SeatType;
 import tp.appsinter.cine.repository.SeatRepository;
+import tp.appsinter.cine.repository.TicketRepository;
 
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -33,6 +34,7 @@ import java.util.stream.Collectors;
 public class SeatService {
 
     private final SeatRepository seatRepository;
+    private final TicketRepository ticketRepository;
     private final ScreenRoomService screenRoomService;
 
     @Transactional
@@ -214,11 +216,26 @@ public class SeatService {
         return CreateSeatResponseDTO.from(getSeat(uuid));
     }
 
+    /**
+     * Corrige una butaca.
+     *
+     * <p>Una butaca que ya figura en alguna entrada no puede cambiar de sala ni de posición: las
+     * entradas muestran la posición de la butaca, así que moverla reescribiría el historial de lo
+     * vendido. El tipo sí puede cambiar, porque cada entrada conserva el tipo y el precio con que se
+     * vendió.
+     */
     @Transactional
     public CreateSeatResponseDTO update(UUID uuid, CreateSeatRequestDTO request) {
         Seat seat = getSeat(uuid);
         ScreenRoom room = screenRoomService.getScreenRoom(request.screenRoomId());
         Position position = new Position(request.row(), request.column());
+        boolean moved = !seat.getScreenRoom().getUuid().equals(room.getUuid())
+                || !seat.getPosition().equals(position);
+        if (moved && ticketRepository.existsBySeatUuid(uuid)) {
+            throw ConflictException.resourceInUse(
+                    "Seat %s already appears on tickets; only its type can change".formatted(uuid),
+                    "Seat", "Ticket");
+        }
         if (seatRepository.existsByScreenRoomUuidAndPositionRowAndPositionColumnAndUuidNot(
                 room.getUuid(), position.row(), position.column(), uuid)) {
             throw ConflictException.nameTaken(

@@ -15,7 +15,7 @@ import java.util.List;
  * que una fila apunte a otro lado.
  */
 public record BulkSeatRequestDTO(
-        @NotEmpty @Valid List<SeatDefinition> seats,
+        @NotEmpty List<@NotNull @Valid SeatDefinition> seats,
         SeatConflictPolicy onConflict
 ) {
     public BulkSeatRequestDTO {

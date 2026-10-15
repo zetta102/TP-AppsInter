@@ -80,8 +80,13 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(DomainException.class)
     public ProblemDetail handleDomain(DomainException exception) {
         ProblemDetail problem = problem(exception.getMessage(), exception.getCode());
-        if (!exception.getContext().isEmpty()) {
-            problem.setProperty("context", exception.getContext());
+        Map<String, Object> context = new LinkedHashMap<>(exception.getContext());
+        Object fieldErrors = context.remove(DomainException.FIELD_ERRORS);
+        if (fieldErrors != null) {
+            problem.setProperty("errors", fieldErrors);
+        }
+        if (!context.isEmpty()) {
+            problem.setProperty("context", context);
         }
         return problem;
     }
