@@ -1,9 +1,9 @@
 package tp.appsinter.cine.controller;
 
-import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -26,6 +26,9 @@ import java.util.UUID;
 @Tag(name = "Inventory")
 public class InventoryController {
 
+    private static final SortWhitelist SORTABLE = SortWhitelist.of("productName", "category", "cost", "quantity");
+    private static final SortWhitelist ADJUSTMENTS_SORTABLE = SortWhitelist.of("createdAt", "delta", "resultingStock");
+
     private final InventoryService inventoryService;
 
     @PostMapping
@@ -39,13 +42,8 @@ public class InventoryController {
     public PageResponseDTO<CreateInventoryResponseDTO> findAll(
             @RequestParam(required = false) ProductCategory category,
             @RequestParam(required = false) String search,
-            @Schema(description = "Página de productos", example = """
-                    {
-                      "page": 0,
-                      "size": 20,
-                      "sort": "productName"
-                    }""") Pageable pageable) {
-        return inventoryService.findAll(category, search, pageable);
+            @ParameterObject Pageable pageable) {
+        return inventoryService.findAll(category, search, SORTABLE.apply(pageable));
     }
 
     @GetMapping("/{uuid}")
@@ -54,9 +52,11 @@ public class InventoryController {
     }
 
     @PutMapping("/{uuid}")
-    public CreateInventoryResponseDTO update(@PathVariable UUID uuid,
+    public CreateInventoryResponseDTO update(Authentication authentication,
+                                             @PathVariable UUID uuid,
                                              @Valid @RequestBody CreateInventoryRequestDTO request) {
-        return inventoryService.update(uuid, request);
+        return inventoryService.update(uuid, request,
+                authentication == null ? null : authentication.getName());
     }
 
     @DeleteMapping("/{uuid}")
@@ -85,12 +85,7 @@ public class InventoryController {
     @GetMapping("/{uuid}/adjustments")
     public PageResponseDTO<InventoryAdjustmentResponseDTO> findAdjustments(
             @PathVariable UUID uuid,
-            @Schema(description = "Página de productos", example = """
-                    {
-                      "page": 0,
-                      "size": 20,
-                      "sort": "createdAt"
-                    }""") Pageable pageable) {
-        return inventoryService.findAdjustments(uuid, pageable);
+            @ParameterObject Pageable pageable) {
+        return inventoryService.findAdjustments(uuid, ADJUSTMENTS_SORTABLE.apply(pageable));
     }
 }

@@ -7,6 +7,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.jdbc.core.JdbcTemplate;
+import tp.appsinter.cine.DatabaseCleaner;
 import tp.appsinter.cine.PostgresTestcontainersConfiguration;
 import tp.appsinter.cine.exception.BusinessRuleException;
 import tp.appsinter.cine.exception.NotFoundException;
@@ -33,9 +35,9 @@ import static org.junit.jupiter.api.Assertions.assertAll;
 class ConcessionFlowTests {
 
     @Autowired
-    private ReservationService reservationService;
+    private JdbcTemplate jdbcTemplate;
     @Autowired
-    private ReservationRepository reservationRepository;
+    private ReservationService reservationService;
     @Autowired
     private InventoryRepository inventoryRepository;
     @Autowired
@@ -56,13 +58,7 @@ class ConcessionFlowTests {
 
     @BeforeEach
     void setUp() {
-        reservationRepository.deleteAll();
-        inventoryRepository.deleteAll();
-        movieScreeningRepository.deleteAll();
-        seatRepository.deleteAll();
-        screenRoomRepository.deleteAll();
-        movieRepository.deleteAll();
-        userRepository.deleteAll();
+        DatabaseCleaner.truncate(jdbcTemplate);
 
         customer = userRepository.save(User.builder()
                 .firstName("Alan")

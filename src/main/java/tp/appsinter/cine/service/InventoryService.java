@@ -29,6 +29,11 @@ import java.util.UUID;
 @Transactional(readOnly = true)
 public class InventoryService {
 
+    /**
+     * Motivo con que se asienta un cambio de stock hecho al editar el producto completo.
+     */
+    static final String STOCK_SET_BY_UPDATE = "Stock set by product update";
+
     private final InventoryRepository inventoryRepository;
     private final InventoryAdjustmentRepository inventoryAdjustmentRepository;
     private final EntityManager entityManager;
@@ -136,18 +141,37 @@ public class InventoryService {
         return CreateInventoryResponseDTO.from(getInventory(uuid));
     }
 
+    /**
+     * Corrige los datos del producto.
+     *
+     * <p>Si la cantidad cambia, la diferencia queda asentada en el historial como cualquier otro
+     * ajuste: de lo contrario un {@code PUT} podría mover el stock sin dejar rastro. La escritura
+     * sigue protegida por {@code @Version}, así que una venta simultánea produce un conflicto en
+     * lugar de perderse.
+     */
     @Transactional
-    public CreateInventoryResponseDTO update(UUID uuid, CreateInventoryRequestDTO request) {
+    public CreateInventoryResponseDTO update(UUID uuid, CreateInventoryRequestDTO request, String adjustedBy) {
         Inventory inventory = getInventory(uuid);
         if (inventoryRepository.existsByProductNameIgnoreCaseAndUuidNot(request.productName(), uuid)) {
             throw ConflictException.nameTaken(
                     "Product '%s' already exists".formatted(request.productName()),
                     "productName", request.productName());
         }
+        int delta = request.quantity() - inventory.getQuantity();
         inventory.setProductName(request.productName());
         inventory.setCategory(request.category());
         inventory.setCost(request.cost());
         inventory.setQuantity(request.quantity());
+        if (delta != 0) {
+            inventoryAdjustmentRepository.save(InventoryAdjustment.builder()
+                    .inventory(inventory)
+                    .delta(delta)
+                    .resultingStock(request.quantity())
+                    .reason(STOCK_SET_BY_UPDATE)
+                    .adjustedBy(adjustedBy)
+                    .createdAt(OffsetDateTime.now())
+                    .build());
+        }
         return CreateInventoryResponseDTO.from(inventory);
     }
 

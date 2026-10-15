@@ -5,20 +5,25 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
+import tp.appsinter.cine.DatabaseCleaner;
 import tp.appsinter.cine.PostgresTestcontainersConfiguration;
 import tp.appsinter.cine.model.dto.request.CreateUserRequestDTO;
 import tp.appsinter.cine.model.utils.Role;
 import tp.appsinter.cine.repository.RefreshTokenRepository;
-import tp.appsinter.cine.repository.ReservationRepository;
 import tp.appsinter.cine.repository.UserRepository;
 import tp.appsinter.cine.service.UserService;
+
+import java.time.OffsetDateTime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -37,13 +42,13 @@ class TokenAndUserAccessApiTests {
     private static final String PASSWORD = "supersecret";
 
     @Autowired
+    private JdbcTemplate jdbcTemplate;
+    @Autowired
     private MockMvc mockMvc;
     @Autowired
     private UserService userService;
     @Autowired
     private UserRepository userRepository;
-    @Autowired
-    private ReservationRepository reservationRepository;
     @Autowired
     private RefreshTokenRepository refreshTokenRepository;
 
@@ -53,9 +58,7 @@ class TokenAndUserAccessApiTests {
 
     @BeforeEach
     void setUp() {
-        reservationRepository.deleteAll();
-        refreshTokenRepository.deleteAll();
-        userRepository.deleteAll();
+        DatabaseCleaner.truncate(jdbcTemplate);
 
         userService.createUser(
                 new CreateUserRequestDTO("Linus", "Torvalds", CUSTOMER_EMAIL, PASSWORD), Role.CUSTOMER);
@@ -133,6 +136,31 @@ class TokenAndUserAccessApiTests {
 
             mockMvc.perform(refresh(refreshToken)).andExpect(status().isUnauthorized());
         }
+
+        @Test
+        @DisplayName("revokes the whole family when a rotated token is replayed after the grace window")
+        void revokesFamilyOnReuse() throws Exception {
+            String first = refreshTokenFrom(login(CUSTOMER_EMAIL));
+            String second = refreshTokenFrom(refresh(first));
+
+            // Simula que la ventana de gracia ya pasó para el token rotado.
+            refreshTokenRepository.findAll().stream()
+                    .filter(token -> token.getRotatedAt() != null)
+                    .forEach(token -> {
+                        token.setRotatedAt(OffsetDateTime.now().minusHours(1));
+                        refreshTokenRepository.save(token);
+                    });
+
+            mockMvc.perform(refresh(first))
+                    .andExpect(status().isUnauthorized())
+                    .andExpect(jsonPath("$.code").value("TOKEN_REVOKED"));
+
+            // La revocación tiene que haber quedado confirmada: el token legítimo tampoco sirve.
+            mockMvc.perform(refresh(second))
+                    .andExpect(status().isUnauthorized());
+            assertThat(refreshTokenRepository.findAll())
+                    .allSatisfy(token -> assertThat(token.getRevokedAt()).isNotNull());
+        }
     }
 
     @Nested
@@ -168,6 +196,48 @@ class TokenAndUserAccessApiTests {
     }
 
     @Nested
+    @DisplayName("access matrix")
+    class AccessMatrix {
+
+        /**
+         * Una fila por regla de {@code SecurityConfig}. El rol {@code NONE} es una petición anónima.
+         * Sólo se verifica que la regla deje pasar o corte; lo que responde el endpoint después es
+         * asunto de otras pruebas, por eso los casos permitidos no usan identificadores reales.
+         */
+        @ParameterizedTest(name = "{0} {1} as {2} → {3}")
+        @CsvSource({
+                "GET,  /api/movies,           NONE,     200",
+                "GET,  /api/products,         NONE,     200",
+                "GET,  /api/metadata/enums,   NONE,     200",
+                "GET,  /api/reservations,     NONE,     401",
+                "GET,  /api/inventory,        NONE,     401",
+                "GET,  /api/users,            NONE,     401",
+                "POST, /api/movies,           NONE,     401",
+                "GET,  /api/reservations,     CUSTOMER, 200",
+                "GET,  /api/users/me,         CUSTOMER, 200",
+                "GET,  /api/inventory,        CUSTOMER, 403",
+                "GET,  /api/users,            CUSTOMER, 403",
+                "GET,  /api/reservations/all, CUSTOMER, 403",
+                "POST, /api/movies,           CUSTOMER, 403",
+                "GET,  /api/inventory,        ADMIN,    200",
+                "GET,  /api/users,            ADMIN,    200",
+                "GET,  /api/reservations/all, ADMIN,    200"
+        })
+        void enforcesRules(String method, String path, String role, int expectedStatus) throws Exception {
+            var request = "POST".equals(method)
+                    ? post(path).contentType(MediaType.APPLICATION_JSON).content("{}")
+                    : get(path);
+            switch (role) {
+                case "CUSTOMER" -> request.header(HttpHeaders.AUTHORIZATION, bearer(CUSTOMER_EMAIL));
+                case "ADMIN" -> request.header(HttpHeaders.AUTHORIZATION, bearer(ADMIN_EMAIL));
+                default -> {
+                }
+            }
+            mockMvc.perform(request).andExpect(status().is(expectedStatus));
+        }
+    }
+
+    @Nested
     @DisplayName("error envelope")
     class ErrorEnvelope {
 
@@ -194,6 +264,53 @@ class TokenAndUserAccessApiTests {
             mockMvc.perform(get("/api/movies").param("sort", "bogus,asc"))
                     .andExpect(status().isBadRequest())
                     .andExpect(jsonPath("$.detail").value("Unknown sort property 'bogus'"));
+        }
+
+        @Test
+        @DisplayName("refuses to sort by a property the listing does not publish")
+        void refusesUnpublishedSortProperty() throws Exception {
+            mockMvc.perform(get("/api/users").param("sort", "password")
+                            .header(HttpHeaders.AUTHORIZATION, bearer(ADMIN_EMAIL)))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value("INVALID_SORT_PROPERTY"))
+                    .andExpect(jsonPath("$.context.property").value("password"));
+        }
+
+        @Test
+        @DisplayName("caps the page size")
+        void capsPageSize() throws Exception {
+            mockMvc.perform(get("/api/users").param("size", "5000")
+                            .header(HttpHeaders.AUTHORIZATION, bearer(ADMIN_EMAIL)))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.size").value(100));
+        }
+
+        @Test
+        @DisplayName("keeps the full reservation listing for administrators")
+        void restrictsReservationListingToAdmins() throws Exception {
+            mockMvc.perform(get("/api/reservations/all").header(HttpHeaders.AUTHORIZATION, bearer(CUSTOMER_EMAIL)))
+                    .andExpect(status().isForbidden())
+                    .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+            mockMvc.perform(get("/api/reservations/all").header(HttpHeaders.AUTHORIZATION, bearer(ADMIN_EMAIL)))
+                    .andExpect(status().isOk());
+        }
+
+        @Test
+        @DisplayName("wraps a malformed JSON body in a problem detail with a code")
+        void returnsProblemDetailForMalformedBody() throws Exception {
+            mockMvc.perform(post("/api/auth/login")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{not json"))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
+        }
+
+        @Test
+        @DisplayName("wraps a malformed path variable in a problem detail with a code")
+        void returnsProblemDetailForTypeMismatch() throws Exception {
+            mockMvc.perform(get("/api/movies/not-a-uuid"))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
         }
     }
 }

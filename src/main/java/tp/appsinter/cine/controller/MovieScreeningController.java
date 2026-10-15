@@ -1,9 +1,9 @@
 package tp.appsinter.cine.controller;
 
-import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Pageable;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
@@ -27,6 +27,8 @@ import java.util.UUID;
 @Tag(name = "Movie screenings")
 public class MovieScreeningController {
 
+    private static final SortWhitelist SORTABLE = SortWhitelist.of("startsAt", "endsAt", "basePrice");
+
     private final MovieScreeningService movieScreeningService;
     private final ReservationService reservationService;
 
@@ -45,13 +47,9 @@ public class MovieScreeningController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime to,
             @RequestParam(defaultValue = "true") boolean includeAvailability,
-            @Schema(description = "Página de funciones de cine", example = """
-                    {
-                      "page": 0,
-                      "size": 20,
-                      "sort": "startsAt"
-                    }""") Pageable pageable) {
-        return movieScreeningService.search(movieId, roomId, from, to, upcomingOnly, includeAvailability, pageable);
+            @ParameterObject Pageable pageable) {
+        return movieScreeningService.search(movieId, roomId, from, to, upcomingOnly, includeAvailability,
+                SORTABLE.apply(pageable));
     }
 
     @GetMapping("/{uuid}")

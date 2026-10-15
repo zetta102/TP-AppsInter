@@ -1,5 +1,7 @@
 package tp.appsinter.cine.exception;
 
+import org.jspecify.annotations.Nullable;
+
 import java.util.UUID;
 
 /**
@@ -15,7 +17,7 @@ public final class NotFoundException extends DomainException {
     /**
      * @param resource nombre del recurso ausente, publicado en {@code context.resource}
      */
-    public NotFoundException(String message, String resource) {
+    public NotFoundException(String message, @Nullable String resource) {
         super(message, ErrorCode.NOT_FOUND, context("resource", resource));
     }
 

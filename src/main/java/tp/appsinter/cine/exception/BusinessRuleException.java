@@ -1,5 +1,7 @@
 package tp.appsinter.cine.exception;
 
+import org.jspecify.annotations.Nullable;
+
 import java.time.OffsetDateTime;
 import java.util.Collection;
 import java.util.List;
@@ -31,7 +33,7 @@ public final class BusinessRuleException extends DomainException {
     /**
      * Las butacas pedidas no pertenecen a la sala donde se proyecta la función.
      */
-    public static BusinessRuleException seatsWrongRoom(UUID roomId, Collection<UUID> seatIds) {
+    public static BusinessRuleException seatsWrongRoom(UUID roomId, @Nullable Collection<UUID> seatIds) {
         return new BusinessRuleException("All seats must belong to room %s".formatted(roomId),
                 ErrorCode.SEATS_WRONG_ROOM,
                 context("roomId", roomId, "seatIds", seatIds == null ? null : List.copyOf(seatIds)));
@@ -70,6 +72,13 @@ public final class BusinessRuleException extends DomainException {
      */
     public static BusinessRuleException lastAdmin(String message) {
         return new BusinessRuleException(message, ErrorCode.LAST_ADMIN, Map.of());
+    }
+
+    /**
+     * La contraseña vigente informada al cambiarla no coincide.
+     */
+    public static BusinessRuleException wrongPassword() {
+        return new BusinessRuleException("Current password is incorrect", ErrorCode.WRONG_PASSWORD, Map.of());
     }
 
     /**

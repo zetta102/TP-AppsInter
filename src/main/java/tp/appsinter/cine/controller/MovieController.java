@@ -1,9 +1,9 @@
 package tp.appsinter.cine.controller;
 
-import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -24,6 +24,9 @@ import java.util.UUID;
 @Tag(name = "Movies")
 public class MovieController {
 
+    private static final SortWhitelist SORTABLE = SortWhitelist.of(
+            "movieName", "runtime", "releaseYear", "director", "originalLanguage", "certification");
+
     private final MovieService movieService;
 
     @PostMapping
@@ -37,13 +40,8 @@ public class MovieController {
             @RequestParam(required = false) String search,
             @RequestParam(required = false) List<MovieGenre> genre,
             @RequestParam(required = false) Integer releaseYear,
-            @Schema(description = "Página de películas", example = """
-                    {
-                      "page": 0,
-                      "size": 20,
-                      "sort": "movieName"
-                    }""") Pageable pageable) {
-        return movieService.findAll(search, genre, releaseYear, pageable);
+            @ParameterObject Pageable pageable) {
+        return movieService.findAll(search, genre, releaseYear, SORTABLE.apply(pageable));
     }
 
     @GetMapping("/{uuid}")

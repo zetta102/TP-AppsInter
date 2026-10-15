@@ -1,9 +1,9 @@
 package tp.appsinter.cine.controller;
 
-import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
@@ -24,19 +24,15 @@ import java.util.UUID;
 @Tag(name = "Users")
 public class UserController {
 
+    private static final SortWhitelist SORTABLE = SortWhitelist.of("email", "firstName", "lastName", "role");
+
     private final UserService userService;
 
     @GetMapping
     public PageResponseDTO<CreateUserResponseDTO> findAll(
             @RequestParam(required = false) Role role,
-            @Schema(description = "Página de usuarios", example = """
-                    {
-                      "page": 0,
-                      "size": 20,
-                      "sort": "email,firstName"
-                    }""")
-            Pageable pageable) {
-        return userService.findAll(role, pageable);
+            @ParameterObject Pageable pageable) {
+        return userService.findAll(role, SORTABLE.apply(pageable));
     }
 
     @GetMapping("/me")

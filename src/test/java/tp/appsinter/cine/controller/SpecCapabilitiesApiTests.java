@@ -11,7 +11,9 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
+import tp.appsinter.cine.DatabaseCleaner;
 import tp.appsinter.cine.PostgresTestcontainersConfiguration;
 import tp.appsinter.cine.model.dto.request.CreateUserRequestDTO;
 import tp.appsinter.cine.model.entities.Inventory;
@@ -25,14 +27,11 @@ import tp.appsinter.cine.model.utils.ProductCategory;
 import tp.appsinter.cine.model.utils.Role;
 import tp.appsinter.cine.model.utils.ScreenRoomType;
 import tp.appsinter.cine.model.utils.SeatType;
-import tp.appsinter.cine.repository.InventoryAdjustmentRepository;
 import tp.appsinter.cine.repository.InventoryRepository;
 import tp.appsinter.cine.repository.MovieRepository;
 import tp.appsinter.cine.repository.MovieScreeningRepository;
-import tp.appsinter.cine.repository.RefreshTokenRepository;
 import tp.appsinter.cine.repository.ReservationRepository;
 import tp.appsinter.cine.repository.ScreenRoomRepository;
-import tp.appsinter.cine.repository.SeatHoldRepository;
 import tp.appsinter.cine.repository.SeatRepository;
 import tp.appsinter.cine.repository.UserRepository;
 import tp.appsinter.cine.service.UserService;
@@ -70,6 +69,8 @@ class SpecCapabilitiesApiTests {
     private static final String PASSWORD = "supersecret";
 
     @Autowired
+    private JdbcTemplate jdbcTemplate;
+    @Autowired
     private MockMvc mockMvc;
     @Autowired
     private UserService userService;
@@ -77,12 +78,6 @@ class SpecCapabilitiesApiTests {
     private UserRepository userRepository;
     @Autowired
     private ReservationRepository reservationRepository;
-    @Autowired
-    private RefreshTokenRepository refreshTokenRepository;
-    @Autowired
-    private SeatHoldRepository seatHoldRepository;
-    @Autowired
-    private InventoryAdjustmentRepository inventoryAdjustmentRepository;
     @Autowired
     private InventoryRepository inventoryRepository;
     @Autowired
@@ -102,16 +97,7 @@ class SpecCapabilitiesApiTests {
 
     @BeforeEach
     void setUp() {
-        seatHoldRepository.deleteAll();
-        reservationRepository.deleteAll();
-        refreshTokenRepository.deleteAll();
-        inventoryAdjustmentRepository.deleteAll();
-        inventoryRepository.deleteAll();
-        movieScreeningRepository.deleteAll();
-        seatRepository.deleteAll();
-        screenRoomRepository.deleteAll();
-        movieRepository.deleteAll();
-        userRepository.deleteAll();
+        DatabaseCleaner.truncate(jdbcTemplate);
 
         userService.createUser(new CreateUserRequestDTO("Ada", "Lovelace", CUSTOMER_EMAIL, PASSWORD), Role.CUSTOMER);
         userService.createUser(new CreateUserRequestDTO("Charles", "Babbage", OTHER_EMAIL, PASSWORD), Role.CUSTOMER);
@@ -457,7 +443,8 @@ class SpecCapabilitiesApiTests {
                             .content("""
                                     {"currentPassword":"wrongpassword","newPassword":"anothersecret"}
                                     """))
-                    .andExpect(status().isUnauthorized());
+                    .andExpect(status().isUnprocessableContent())
+                    .andExpect(jsonPath("$.code").value("WRONG_PASSWORD"));
 
             mockMvc.perform(post("/api/users/me/password")
                             .header(HttpHeaders.AUTHORIZATION, token)

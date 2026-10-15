@@ -68,6 +68,9 @@ public class ReservationService {
     @Transactional
     public CreateReservationResponseDTO createReservation(String userEmail, CreateReservationDTO request) {
         User user = userService.getByEmail(userEmail);
+        // Serializa la compra con los bloqueos de la misma función: la comprobación de bloqueos
+        // ajenos de más abajo no está respaldada por ningún índice único.
+        movieScreeningService.lockScreening(request.movieScreeningId());
         if (request.holdId() != null) {
             // Se consume antes de validar el resto para que el bloqueo deje de contar como ajeno y
             // no se rechace la compra por chocar con la reserva temporal del propio comprador.
@@ -264,6 +267,10 @@ public class ReservationService {
      * qué canceló, la administración puede auditarlo y los informes de ingresos siguen teniendo con
      * qué trabajar. Lo único que se pierde es la ocupación de las butacas, que vuelven a estar a la
      * venta porque el índice único parcial ignora las entradas liberadas.
+     *
+     * <p>Un cliente no puede cancelar una vez que la función empezó: ya no hay butaca que devolver a
+     * la venta y la cancelación sólo serviría para anular el cobro. La administración sí puede,
+     * porque es quien resuelve reclamos.
      */
     @Transactional
     public CreateReservationResponseDTO cancelReservation(UUID uuid, String userEmail, boolean isAdmin) {
@@ -274,8 +281,12 @@ public class ReservationService {
         if (reservation.getStatus() == ReservationStatus.CANCELLED) {
             throw BusinessRuleException.alreadyCancelled(uuid);
         }
-
         OffsetDateTime cancelledAt = OffsetDateTime.now();
+        MovieScreening screening = reservation.getMovieScreening();
+        if (!isAdmin && screening.getStartsAt().isBefore(cancelledAt)) {
+            throw BusinessRuleException.screeningStarted(screening.getUuid(), screening.getStartsAt());
+        }
+
         reservation.setStatus(ReservationStatus.CANCELLED);
         reservation.setCancelledAt(cancelledAt);
         // totalPrice pasa a significar "lo que se debe"; lo que se dejó de cobrar queda aparte.

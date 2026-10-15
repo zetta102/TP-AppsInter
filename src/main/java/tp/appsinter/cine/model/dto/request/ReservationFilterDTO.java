@@ -34,11 +34,4 @@ public record ReservationFilterDTO(
     public ReservationFilterDTO {
         upcomingOnly = upcomingOnly != null && upcomingOnly;
     }
-
-    /**
-     * Filtro vacío, para los listados que no reciben criterios.
-     */
-    public static ReservationFilterDTO empty() {
-        return new ReservationFilterDTO(null, null, null, null, null, false, null, null);
-    }
 }

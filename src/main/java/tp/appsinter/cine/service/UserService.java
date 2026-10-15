@@ -3,7 +3,6 @@ package tp.appsinter.cine.service;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -78,14 +77,15 @@ public class UserService {
      * <p>Exige la contraseña vigente porque un token robado no debería alcanzar para apropiarse de
      * la cuenta, y revoca el resto de las sesiones para echar a quien haya entrado con la anterior.
      *
-     * @throws BadCredentialsException si la contraseña vigente no coincide, lo que se traduce en
-     *                                 {@code 401}
+     * @throws BusinessRuleException si la contraseña vigente no coincide, con código
+     *                               {@code WRONG_PASSWORD}. No es un {@code 401}: la sesión sigue
+     *                               siendo válida y el cliente no debe cerrarla
      */
     @Transactional
     public void changePassword(String email, ChangePasswordRequestDTO request) {
         User user = getByEmail(email);
         if (!passwordEncoder.matches(request.currentPassword(), user.getPassword())) {
-            throw new BadCredentialsException("Current password is incorrect");
+            throw BusinessRuleException.wrongPassword();
         }
         user.setPassword(passwordEncoder.encode(request.newPassword()));
         refreshTokenService.revokeAllExcept(user, request.refreshToken());

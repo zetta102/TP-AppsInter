@@ -1,5 +1,7 @@
 package tp.appsinter.cine.exception;
 
+import org.jspecify.annotations.Nullable;
+
 import java.time.OffsetDateTime;
 import java.util.Collection;
 import java.util.List;
@@ -40,7 +42,7 @@ public final class ConflictException extends DomainException {
      * lleva la lista completa para que el cliente pueda corregir de una sola vez en lugar de
      * descubrir los choques de a uno.
      */
-    public static ConflictException seatPositionsTaken(String message, Collection<String> conflicts) {
+    public static ConflictException seatPositionsTaken(String message, @Nullable Collection<String> conflicts) {
         return new ConflictException(message, ErrorCode.NAME_TAKEN,
                 context("conflicts", conflicts == null ? null : List.copyOf(conflicts)));
     }
@@ -48,7 +50,7 @@ public final class ConflictException extends DomainException {
     /**
      * Alguna butaca ya fue vendida o está retenida por otra persona.
      */
-    public static ConflictException seatsUnavailable(String message, Collection<UUID> seatIds) {
+    public static ConflictException seatsUnavailable(String message, @Nullable Collection<UUID> seatIds) {
         return new ConflictException(message, ErrorCode.SEATS_UNAVAILABLE,
                 context("seatIds", seatIds == null ? null : List.copyOf(seatIds)));
     }
@@ -72,12 +74,5 @@ public final class ConflictException extends DomainException {
     public static ConflictException resourceInUse(String message, String resource, String referencedBy) {
         return new ConflictException(message, ErrorCode.RESOURCE_IN_USE,
                 context("resource", resource, "referencedBy", referencedBy));
-    }
-
-    /**
-     * Choque de {@code @Version}: el recurso cambió entre la lectura y la escritura.
-     */
-    public static ConflictException optimisticLock(String message, String resource) {
-        return new ConflictException(message, ErrorCode.OPTIMISTIC_LOCK, context("resource", resource));
     }
 }

@@ -1,8 +1,14 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <configuration>
-    <include resource="org/springframework/boot/logging/logback/base.xml"/>
+    <!-- Se importan sólo los valores por defecto y el appender de consola de Spring Boot. base.xml
+         declara además su propio root y el appender FILE, y volver a declarar root encima de él
+         dejaba la configuración repartida en dos lugares. -->
+    <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+    <include resource="org/springframework/boot/logging/logback/console-appender.xml"/>
 
+    <!-- Lo instala CreateOpenTelemetryAppender cuando el SDK de OpenTelemetry ya existe. -->
     <appender name="OTEL" class="io.opentelemetry.instrumentation.logback.appender.v1_0.OpenTelemetryAppender">
+        <captureMdcAttributes>*</captureMdcAttributes>
     </appender>
 
     <root level="INFO">

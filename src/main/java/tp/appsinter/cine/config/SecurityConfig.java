@@ -67,6 +67,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.PATCH, "/api/users/me").authenticated()
                         .requestMatchers(HttpMethod.POST, "/api/users/me/password").authenticated()
                         .requestMatchers("/api/users/**").hasRole(ADMIN)
+                        .requestMatchers(HttpMethod.GET, "/api/reservations/all").hasRole(ADMIN)
                         .anyRequest().authenticated())
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
                 .exceptionHandling(handling -> handling

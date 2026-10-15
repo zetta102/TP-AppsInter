@@ -1,11 +1,9 @@
 package tp.appsinter.cine.controller;
 
-import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.PageRequest;
+import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
 import org.springframework.web.bind.annotation.*;
 import tp.appsinter.cine.model.dto.response.PageResponseDTO;
 import tp.appsinter.cine.model.dto.response.ProductResponseDTO;
@@ -28,10 +26,12 @@ import java.util.UUID;
 public class ProductController {
 
     /**
-     * Nombre del campo tal como lo ve el cliente, y la propiedad de la entidad que hay detrás.
+     * Permite ordenar por {@code price} aunque la columna se llame {@code cost}: el cliente no tiene
+     * por qué conocer el nombre interno del campo que este recurso justamente le oculta. El stock no
+     * se publica, así que tampoco se puede ordenar por él.
      */
-    private static final String PUBLIC_PRICE_PROPERTY = "price";
-    private static final String ENTITY_PRICE_PROPERTY = "cost";
+    private static final SortWhitelist SORTABLE = SortWhitelist.of("productName", "category")
+            .alias("price", "cost");
 
     private final InventoryService inventoryService;
 
@@ -39,35 +39,12 @@ public class ProductController {
     public PageResponseDTO<ProductResponseDTO> findAll(
             @RequestParam(required = false) ProductCategory category,
             @RequestParam(required = false) String search,
-            @Schema(description = "Página de productos", example = """
-                    {
-                      "page": 0,
-                      "size": 20,
-                      "sort": "productName"
-                    }""") Pageable pageable) {
-        return inventoryService.findAllProducts(category, search, translateSort(pageable));
+            @ParameterObject Pageable pageable) {
+        return inventoryService.findAllProducts(category, search, SORTABLE.apply(pageable));
     }
 
     @GetMapping("/{uuid}")
     public ProductResponseDTO findById(@PathVariable UUID uuid) {
         return inventoryService.findProductById(uuid);
-    }
-
-    /**
-     * Permite ordenar por {@code price} aunque la columna se llame {@code cost}. Sin esta
-     * traducción el cliente tendría que conocer el nombre interno del campo que este recurso
-     * justamente le oculta.
-     */
-    private Pageable translateSort(Pageable pageable) {
-        Sort sort = pageable.getSort();
-        if (sort.getOrderFor(PUBLIC_PRICE_PROPERTY) == null) {
-            return pageable;
-        }
-        Sort translated = Sort.by(sort.stream()
-                .map(order -> PUBLIC_PRICE_PROPERTY.equals(order.getProperty())
-                        ? order.withProperty(ENTITY_PRICE_PROPERTY)
-                        : order)
-                .toList());
-        return PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(), translated);
     }
 }

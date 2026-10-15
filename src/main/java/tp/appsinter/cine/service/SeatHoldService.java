@@ -53,7 +53,9 @@ public class SeatHoldService {
     @Transactional
     public SeatHoldResponseDTO create(UUID screeningUuid, String userEmail, CreateSeatHoldDTO request) {
         User user = userService.getByEmail(userEmail);
-        MovieScreening screening = movieScreeningService.getScreening(screeningUuid);
+        // Sin el bloqueo, dos clientes podrían pasar a la vez la comprobación de abajo y retener la
+        // misma butaca: ninguno de los dos podría comprarla hasta que venciera el otro bloqueo.
+        MovieScreening screening = movieScreeningService.lockScreening(screeningUuid);
         OffsetDateTime now = OffsetDateTime.now();
 
         if (screening.getStartsAt().isBefore(now)) {

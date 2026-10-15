@@ -11,10 +11,10 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
+import tp.appsinter.cine.DatabaseCleaner;
 import tp.appsinter.cine.PostgresTestcontainersConfiguration;
-import tp.appsinter.cine.repository.RefreshTokenRepository;
-import tp.appsinter.cine.repository.ReservationRepository;
 import tp.appsinter.cine.repository.UserRepository;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -36,19 +36,15 @@ class AuthAndReservationApiTests {
             """;
 
     @Autowired
+    private JdbcTemplate jdbcTemplate;
+    @Autowired
     private MockMvc mockMvc;
     @Autowired
     private UserRepository userRepository;
-    @Autowired
-    private ReservationRepository reservationRepository;
-    @Autowired
-    private RefreshTokenRepository refreshTokenRepository;
 
     @BeforeEach
     void setUp() {
-        reservationRepository.deleteAll();
-        refreshTokenRepository.deleteAll();
-        userRepository.deleteAll();
+        DatabaseCleaner.truncate(jdbcTemplate);
     }
 
     private void register() throws Exception {

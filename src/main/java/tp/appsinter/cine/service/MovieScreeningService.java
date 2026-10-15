@@ -19,6 +19,7 @@ import tp.appsinter.cine.repository.SeatRepository;
 import tp.appsinter.cine.repository.TicketRepository;
 
 import java.time.OffsetDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -82,21 +83,6 @@ public class MovieScreeningService {
         return PageResponseDTO.from(page, content);
     }
 
-    public List<CreateMovieScreeningResponseDTO> findAll(boolean includeAvailability) {
-        return describe(movieScreeningRepository.findAll(), includeAvailability);
-    }
-
-    public List<CreateMovieScreeningResponseDTO> findUpcoming(boolean includeAvailability) {
-        return describe(
-                movieScreeningRepository.findByStartsAtAfterOrderByStartsAtAsc(OffsetDateTime.now()),
-                includeAvailability);
-    }
-
-    public List<CreateMovieScreeningResponseDTO> findByMovie(UUID movieId, boolean includeAvailability) {
-        movieService.getMovie(movieId);
-        return describe(movieScreeningRepository.findByMovieUuid(movieId), includeAvailability);
-    }
-
     public CreateMovieScreeningResponseDTO findById(UUID uuid, boolean includeAvailability) {
         return describe(List.of(getScreening(uuid)), includeAvailability).getFirst();
     }
@@ -150,6 +136,7 @@ public class MovieScreeningService {
         OffsetDateTime endsAt = startsAt.plusMinutes(movie.getRuntime() + TURNOVER_MINUTES);
 
         requireNoOverlap(room, startsAt, endsAt, uuid);
+        requireUnsoldIfRescheduled(screening, movie, room, startsAt);
 
         screening.setMovie(movie);
         screening.setScreenRoom(room);
@@ -181,8 +168,40 @@ public class MovieScreeningService {
                 });
     }
 
+    /**
+     * Una función con entradas vendidas no puede cambiar de película, de sala ni de horario: las
+     * entradas apuntan a butacas de la sala original y quien las compró eligió esa función. El
+     * precio base sí puede cambiar, porque cada entrada conserva el precio con que se vendió.
+     */
+    private void requireUnsoldIfRescheduled(MovieScreening screening,
+                                            Movie movie,
+                                            ScreenRoom room,
+                                            OffsetDateTime startsAt) {
+        boolean rescheduled = !screening.getMovie().getUuid().equals(movie.getUuid())
+                || !screening.getScreenRoom().getUuid().equals(room.getUuid())
+                // Postgres guarda microsegundos: se compara con esa precisión para que reenviar el
+                // horario tal como se leyó no cuente como un cambio.
+                || !screening.getStartsAt().truncatedTo(ChronoUnit.MICROS)
+                .isEqual(startsAt.truncatedTo(ChronoUnit.MICROS));
+        if (rescheduled && ticketRepository.existsByMovieScreeningUuidAndCancelledAtIsNull(screening.getUuid())) {
+            throw ConflictException.resourceInUse(
+                    "Screening %s already has tickets sold; only its base price can change"
+                            .formatted(screening.getUuid()),
+                    "Movie screening", "Ticket");
+        }
+    }
+
     MovieScreening getScreening(UUID uuid) {
         return movieScreeningRepository.findById(uuid)
+                .orElseThrow(() -> NotFoundException.of("Movie screening", uuid));
+    }
+
+    /**
+     * Como {@link #getScreening}, pero bloquea la fila de la función hasta que termine la
+     * transacción. Lo usan las operaciones que comprueban y luego ocupan butacas.
+     */
+    MovieScreening lockScreening(UUID uuid) {
+        return movieScreeningRepository.findByIdForUpdate(uuid)
                 .orElseThrow(() -> NotFoundException.of("Movie screening", uuid));
     }
 }

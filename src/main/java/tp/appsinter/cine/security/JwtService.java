@@ -5,7 +5,7 @@ import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
-import lombok.RequiredArgsConstructor;
+import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
 import tp.appsinter.cine.model.entities.User;
 
@@ -18,10 +18,19 @@ import java.util.Date;
 import java.util.Optional;
 
 @Service
-@RequiredArgsConstructor
 public class JwtService {
 
     private final JwtProperties properties;
+    /**
+     * La clave se deriva una sola vez: el secreto no cambia en caliente y el filtro de autenticación
+     * la usa en cada petición.
+     */
+    private final SecretKey signingKey;
+
+    public JwtService(JwtProperties properties) {
+        this.properties = properties;
+        this.signingKey = Keys.hmacShaKeyFor(properties.secret().getBytes(StandardCharsets.UTF_8));
+    }
 
     public IssuedToken issue(User user) {
         Instant now = Instant.now();
@@ -33,7 +42,7 @@ public class JwtService {
                 .claim("uid", user.getUuid().toString())
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(expiresAt))
-                .signWith(signingKey())
+                .signWith(signingKey)
                 .compact();
         return new IssuedToken(token, expiresAt.atOffset(ZoneOffset.UTC));
     }
@@ -46,21 +55,17 @@ public class JwtService {
     public ParsedAccessToken parse(String token) {
         try {
             Claims claims = Jwts.parser()
-                    .verifyWith(signingKey())
+                    .verifyWith(signingKey)
                     .requireIssuer(properties.issuer())
                     .build()
                     .parseSignedClaims(token)
                     .getPayload();
             return new ParsedAccessToken(claims, false);
-        } catch (ExpiredJwtException ex) {
+        } catch (ExpiredJwtException _) {
             return new ParsedAccessToken(null, true);
-        } catch (JwtException | IllegalArgumentException ex) {
+        } catch (JwtException | IllegalArgumentException _) {
             return new ParsedAccessToken(null, false);
         }
-    }
-
-    private SecretKey signingKey() {
-        return Keys.hmacShaKeyFor(properties.secret().getBytes(StandardCharsets.UTF_8));
     }
 
     public record IssuedToken(String token, OffsetDateTime expiresAt) {
@@ -70,7 +75,7 @@ public class JwtService {
      * @param claims  reclamaciones del token, o {@code null} si no se pudo validar
      * @param expired {@code true} sólo cuando la firma era correcta pero el token venció
      */
-    public record ParsedAccessToken(Claims claims, boolean expired) {
+    public record ParsedAccessToken(@Nullable Claims claims, boolean expired) {
 
         public Optional<Claims> claimsIfValid() {
             return Optional.ofNullable(claims);

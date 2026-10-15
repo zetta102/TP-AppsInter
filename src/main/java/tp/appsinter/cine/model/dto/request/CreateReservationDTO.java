@@ -4,6 +4,8 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -18,7 +20,7 @@ import java.util.UUID;
 public record CreateReservationDTO(
         @NotNull UUID movieScreeningId,
         @NotEmpty List<UUID> seatIds,
-        @Valid List<ReservationItemRequestDTO> products,
+        @Valid List<@NotNull ReservationItemRequestDTO> products,
         UUID holdId
 ) {
     public CreateReservationDTO {
@@ -37,13 +39,21 @@ public record CreateReservationDTO(
 
     /**
      * Repetir el mismo producto se interpreta como pedir más unidades, no como un error.
+     *
+     * <p>Sólo se fusiona si todas las líneas son válidas. Si alguna no lo es, la lista se deja tal
+     * cual para que Bean Validation la rechace con {@code 400}: descartarla en silencio confirmaría
+     * una compra distinta de la pedida, y sumar una cantidad negativa con otra positiva la ocultaría.
      */
     private static List<ReservationItemRequestDTO> mergeByProduct(List<ReservationItemRequestDTO> products) {
+        boolean allValid = products.stream().allMatch(product -> product != null
+                && product.inventoryId() != null
+                && product.quantity() != null
+                && product.quantity() > 0);
+        if (!allValid) {
+            return Collections.unmodifiableList(new ArrayList<>(products));
+        }
         var merged = new LinkedHashMap<UUID, Integer>();
         for (ReservationItemRequestDTO product : products) {
-            if (product == null || product.inventoryId() == null || product.quantity() == null) {
-                continue;
-            }
             merged.merge(product.inventoryId(), product.quantity(), Integer::sum);
         }
         return merged.entrySet().stream()

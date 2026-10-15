@@ -2,6 +2,7 @@ package tp.appsinter.cine.security;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.Nullable;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.stereotype.Service;
@@ -44,7 +45,7 @@ public class RefreshTokenService {
      * es lo que corresponde al iniciar sesión.
      */
     @Transactional
-    public IssuedRefreshToken issue(User user, UUID familyId) {
+    public IssuedRefreshToken issue(User user, @Nullable UUID familyId) {
         byte[] raw = new byte[TOKEN_BYTES];
         secureRandom.nextBytes(raw);
         String token = Base64.getUrlEncoder().withoutPadding().encodeToString(raw);
@@ -73,8 +74,11 @@ public class RefreshTokenService {
      * <p>Presentarlo después de la ventana sí es reutilización: se revoca la familia completa. No se
      * puede saber si quien insiste es el dueño o el ladrón, y dejar afuera a los dos es más seguro
      * que dejar entrar a uno de ellos.
+     *
+     * <p>La revocación tiene que sobrevivir a la excepción que avisa del robo; sin
+     * {@code noRollbackFor} se desharía junto con la transacción y la familia seguiría viva.
      */
-    @Transactional
+    @Transactional(noRollbackFor = RefreshTokenReusedException.class)
     public RotatedRefreshToken rotate(String token) {
         OffsetDateTime now = OffsetDateTime.now();
         RefreshToken existing = refreshTokenRepository.findByTokenHash(hash(token))
@@ -124,7 +128,7 @@ public class RefreshTokenService {
      * revocan todas.
      */
     @Transactional
-    public void revokeAllExcept(User user, String keep) {
+    public void revokeAllExcept(User user, @Nullable String keep) {
         OffsetDateTime now = OffsetDateTime.now();
         if (keep == null || keep.isBlank()) {
             refreshTokenRepository.revokeAllForUser(user.getUuid(), now);

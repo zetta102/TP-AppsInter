@@ -1,14 +1,11 @@
 package tp.appsinter.cine.controller;
 
-import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.PageRequest;
+import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.web.bind.annotation.*;
@@ -19,7 +16,6 @@ import tp.appsinter.cine.model.dto.response.PageResponseDTO;
 import tp.appsinter.cine.service.ReservationService;
 
 import java.net.URI;
-import java.util.Map;
 import java.util.UUID;
 
 @RestController
@@ -28,10 +24,15 @@ import java.util.UUID;
 @Tag(name = "Reservations")
 public class ReservationController {
 
-    private static final Map<String, String> SORT_ALIASES = Map.of(
-            "screening.startsAt", "movieScreening.startsAt",
-            "screeningStartsAt", "movieScreening.startsAt",
-            "userEmail", "user.email");
+    /**
+     * El contrato expone {@code screening.startsAt} porque es como el cliente llama a la función; la
+     * asociación en el modelo se llama {@code movieScreening}. Sin esta traducción, ordenar por «lo
+     * que viene» fallaría con un error de propiedad desconocida.
+     */
+    private static final SortWhitelist SORTABLE = SortWhitelist.of("createdAt", "status", "totalPrice", "cancelledAt")
+            .alias("screening.startsAt", "movieScreening.startsAt")
+            .alias("screeningStartsAt", "movieScreening.startsAt")
+            .alias("userEmail", "user.email");
 
     private final ReservationService reservationService;
 
@@ -47,32 +48,19 @@ public class ReservationController {
     public PageResponseDTO<CreateReservationResponseDTO> findMine(
             Authentication authentication,
             ReservationFilterDTO filter,
-            @Schema(description = "Página de reservas", example = """
-                    {
-                      "page": 0,
-                      "size": 20,
-                      "sort": "createdAt"
-                    }""") Pageable pageable) {
-        return reservationService.findMine(authentication.getName(), filter, translateSort(pageable));
+            @ParameterObject Pageable pageable) {
+        return reservationService.findMine(authentication.getName(), filter, SORTABLE.apply(pageable));
     }
 
     /**
-     * Vista de administración sobre todos los clientes.
+     * Vista de administración sobre todos los clientes. El rol se exige en {@code SecurityConfig},
+     * junto con el resto de las reglas de acceso.
      */
     @GetMapping("/all")
     public PageResponseDTO<CreateReservationResponseDTO> findAll(
-            Authentication authentication,
             ReservationFilterDTO filter,
-            @Schema(description = "Página de reservas", example = """
-                    {
-                      "page": 0,
-                      "size": 20,
-                      "sort": "createdAt"
-                    }""") Pageable pageable) {
-        if (!isAdmin(authentication)) {
-            throw new AccessDeniedException("Only administrators can list every reservation");
-        }
-        return reservationService.findAll(filter, translateSort(pageable));
+            @ParameterObject Pageable pageable) {
+        return reservationService.findAll(filter, SORTABLE.apply(pageable));
     }
 
     @GetMapping("/{uuid}")
@@ -102,22 +90,5 @@ public class ReservationController {
         return authentication.getAuthorities().stream()
                 .map(GrantedAuthority::getAuthority)
                 .anyMatch("ROLE_ADMIN"::equals);
-    }
-
-    /**
-     * Traduce los nombres de ordenamiento publicados a los atributos reales de la entidad.
-     *
-     * <p>El contrato expone {@code screening.startsAt} porque es como el cliente llama a la función;
-     * la asociación en el modelo se llama {@code movieScreening}. Sin esta traducción, ordenar por
-     * «lo que viene» fallaría con un error de propiedad desconocida.
-     */
-    private Pageable translateSort(Pageable pageable) {
-        if (pageable.getSort().isEmpty()) {
-            return pageable;
-        }
-        Sort translated = Sort.by(pageable.getSort().stream()
-                .map(order -> order.withProperty(SORT_ALIASES.getOrDefault(order.getProperty(), order.getProperty())))
-                .toList());
-        return PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(), translated);
     }
 }

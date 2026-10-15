@@ -4,7 +4,7 @@ spring:
   datasource:
     url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/postgres}
     username: ${SPRING_DATASOURCE_USERNAME:user}
-    password: ${SPRING_DATASOURCE_PASSWORD:secret}
+    password: ${SPRING_DATASOURCE_PASSWORD:password}
   threads:
     virtual:
       enabled: true
@@ -15,6 +15,11 @@ spring:
   flyway:
     enabled: true
     locations: classpath:db/migration
+  data:
+    web:
+      pageable:
+        default-page-size: 20
+        max-page-size: 100
 
 cine:
   cors:
@@ -23,7 +28,9 @@ cine:
     email: ${CINE_ADMIN_EMAIL:}
     password: ${CINE_ADMIN_PASSWORD:}
   jwt:
-    secret: ${CINE_JWT_SECRET:1f1d0e6a4c8b2f7e9a3d5c7b1e4f6a8c0d2e4f6a8b0c2d4e6f8a0b2c4d6e8f0a}
+    # Sin valor por defecto a propósito: si falta CINE_JWT_SECRET el arranque falla, en lugar de
+    # firmar tokens con una clave publicada en el repositorio. Mínimo 32 caracteres.
+    secret: ${CINE_JWT_SECRET:}
     expiration: 15m
     refresh-expiration: 30d
     refresh-grace: ${CINE_REFRESH_GRACE_SECONDS:30}s

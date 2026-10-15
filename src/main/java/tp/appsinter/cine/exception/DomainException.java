@@ -1,6 +1,7 @@
 package tp.appsinter.cine.exception;
 
 import lombok.Getter;
+import org.jspecify.annotations.Nullable;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -18,18 +19,15 @@ public sealed abstract class DomainException extends RuntimeException
         permits NotFoundException, ConflictException, BusinessRuleException {
 
     /**
-     * -- GETTER --
-     *  Código estable y no localizado que identifica la falla.
+     * Código estable y no localizado que identifica la falla.
      */
     private final ErrorCode code;
     /**
-     * -- GETTER --
-     *  Datos adicionales asociados al código. Nunca es
-     * ; puede estar vacío.
+     * Datos adicionales asociados al código. Nunca es {@code null}; puede estar vacío.
      */
     private final transient Map<String, Object> context;
 
-    protected DomainException(String message, ErrorCode code, Map<String, Object> context) {
+    protected DomainException(String message, ErrorCode code, @Nullable Map<String, Object> context) {
         super(message);
         this.code = code;
         this.context = context == null || context.isEmpty() ? Map.of() : Map.copyOf(context);
@@ -39,7 +37,7 @@ public sealed abstract class DomainException extends RuntimeException
      * Construye un mapa de contexto descartando las entradas cuyo valor sea {@code null}, de modo
      * que quien lanza el error pueda pasar campos opcionales sin ramificar.
      */
-    protected static Map<String, Object> context(Object... keyValuePairs) {
+    protected static Map<String, Object> context(@Nullable Object... keyValuePairs) {
         if (keyValuePairs.length % 2 != 0) {
             throw new IllegalArgumentException("Context requires an even number of key/value arguments");
         }

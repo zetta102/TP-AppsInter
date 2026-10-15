@@ -19,8 +19,6 @@ public interface UserRepository extends JpaRepository<User, UUID> {
 
     boolean existsByRole(Role role);
 
-    Page<User> findByRole(Role role, Pageable pageable);
-
     /**
      * Administradores activos. Es la comprobación que impide que el sistema quede sin quien lo
      * administre.

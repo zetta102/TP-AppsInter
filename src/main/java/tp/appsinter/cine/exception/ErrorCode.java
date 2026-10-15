@@ -116,7 +116,33 @@ public enum ErrorCode {
      * Extensión. El cambio de rol dejaría al sistema sin ningún administrador, o un administrador
      * intenta quitarse a sí mismo el rol. En ambos casos el sistema quedaría sin quien lo administre.
      */
-    LAST_ADMIN(HttpStatus.UNPROCESSABLE_CONTENT);
+    LAST_ADMIN(HttpStatus.UNPROCESSABLE_CONTENT),
+
+    /**
+     * Extensión. La contraseña vigente no coincide al intentar cambiarla. No es un {@code 401}: la
+     * sesión sigue siendo válida y el cliente no debe tratarlo como un cierre de sesión.
+     */
+    WRONG_PASSWORD(HttpStatus.UNPROCESSABLE_CONTENT),
+
+    /**
+     * Extensión. El recurso existe pero no admite el método HTTP pedido.
+     */
+    METHOD_NOT_ALLOWED(HttpStatus.METHOD_NOT_ALLOWED),
+
+    /**
+     * Extensión. El servidor no puede producir ninguno de los formatos que acepta el cliente.
+     */
+    NOT_ACCEPTABLE(HttpStatus.NOT_ACCEPTABLE),
+
+    /**
+     * Extensión. El cuerpo llega en un formato que el endpoint no acepta.
+     */
+    UNSUPPORTED_MEDIA_TYPE(HttpStatus.UNSUPPORTED_MEDIA_TYPE),
+
+    /**
+     * Extensión. Falla inesperada del servidor; el detalle nunca expone la causa interna.
+     */
+    INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR);
 
     private final HttpStatus status;
 

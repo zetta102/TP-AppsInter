@@ -1,9 +1,9 @@
 package tp.appsinter.cine.controller;
 
-import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -26,6 +26,8 @@ import java.util.UUID;
 @Tag(name = "Screen rooms")
 public class ScreenRoomController {
 
+    private static final SortWhitelist SORTABLE = SortWhitelist.of("roomName", "screenRoomType");
+
     private final ScreenRoomService screenRoomService;
     private final SeatService seatService;
 
@@ -37,13 +39,8 @@ public class ScreenRoomController {
 
     @GetMapping
     public PageResponseDTO<CreateScreenRoomResponseDTO> findAll(
-            @Schema(description = "Página de salas", example = """
-                    {
-                      "page": 0,
-                      "size": 20,
-                      "sort": "roomName"
-                    }""") Pageable pageable) {
-        return screenRoomService.findAll(pageable);
+            @ParameterObject Pageable pageable) {
+        return screenRoomService.findAll(SORTABLE.apply(pageable));
     }
 
     @GetMapping("/{uuid}")

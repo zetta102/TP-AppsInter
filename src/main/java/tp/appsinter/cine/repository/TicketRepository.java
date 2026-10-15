@@ -17,7 +17,10 @@ import java.util.UUID;
 @Repository
 public interface TicketRepository extends JpaRepository<Ticket, UUID> {
 
-    List<Ticket> findByMovieScreeningUuid(UUID movieScreeningUuid);
+    /**
+     * Indica si la función tiene alguna entrada vendida y sin cancelar.
+     */
+    boolean existsByMovieScreeningUuidAndCancelledAtIsNull(UUID movieScreeningUuid);
 
     @Query("""
             select t.seat.uuid from Ticket t

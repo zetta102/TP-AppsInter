@@ -9,9 +9,13 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.jdbc.core.JdbcTemplate;
+import tp.appsinter.cine.DatabaseCleaner;
 import tp.appsinter.cine.PostgresTestcontainersConfiguration;
 import tp.appsinter.cine.exception.BusinessRuleException;
 import tp.appsinter.cine.exception.ConflictException;
+import tp.appsinter.cine.exception.ErrorCode;
+import tp.appsinter.cine.model.dto.request.CreateMovieScreeningDTO;
 import tp.appsinter.cine.model.dto.request.CreateReservationDTO;
 import tp.appsinter.cine.model.dto.response.CreateReservationResponseDTO;
 import tp.appsinter.cine.model.dto.response.SeatAvailabilityResponseDTO;
@@ -23,6 +27,7 @@ import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -34,7 +39,11 @@ import static org.junit.jupiter.api.Assertions.assertAll;
 class BookingFlowTests {
 
     @Autowired
+    private JdbcTemplate jdbcTemplate;
+    @Autowired
     private ReservationService reservationService;
+    @Autowired
+    private MovieScreeningService movieScreeningService;
     @Autowired
     private ReservationRepository reservationRepository;
     @Autowired
@@ -57,12 +66,7 @@ class BookingFlowTests {
 
     @BeforeEach
     void setUp() {
-        reservationRepository.deleteAll();
-        movieScreeningRepository.deleteAll();
-        seatRepository.deleteAll();
-        screenRoomRepository.deleteAll();
-        movieRepository.deleteAll();
-        userRepository.deleteAll();
+        DatabaseCleaner.truncate(jdbcTemplate);
 
         customer = userRepository.save(User.builder()
                 .firstName("Ada")
@@ -200,6 +204,47 @@ class BookingFlowTests {
             assertThat(reservationService.createReservation(customer.getEmail(),
                     new CreateReservationDTO(screening.getUuid(), List.of(normalSeat.getUuid()), List.of())).tickets())
                     .hasSize(1);
+        }
+
+        @Test
+        @DisplayName("refuses a customer cancellation once the screening has started, but lets an admin through")
+        void refusesCancellationAfterStart() {
+            CreateReservationResponseDTO created = reservationService.createReservation(customer.getEmail(),
+                    new CreateReservationDTO(screening.getUuid(), List.of(normalSeat.getUuid()), List.of()));
+            screening.setStartsAt(OffsetDateTime.now().minusMinutes(10));
+            movieScreeningRepository.save(screening);
+
+            assertThatThrownBy(() -> reservationService.cancelReservation(created.uuid(), customer.getEmail(), false))
+                    .isInstanceOfSatisfying(BusinessRuleException.class,
+                            ex -> assertThat(ex.getCode()).isEqualTo(ErrorCode.SCREENING_STARTED));
+
+            assertThat(reservationService.cancelReservation(created.uuid(), "admin@example.com", true).status())
+                    .isEqualTo(ReservationStatus.CANCELLED);
+        }
+    }
+
+    @Nested
+    @DisplayName("when rescheduling a screening")
+    class RescheduleScreening {
+
+        @Test
+        @DisplayName("refuses to move a screening with tickets sold but still allows a price change")
+        void protectsSoldScreenings() {
+            reservationService.createReservation(customer.getEmail(),
+                    new CreateReservationDTO(screening.getUuid(), List.of(normalSeat.getUuid()), List.of()));
+            UUID movieId = screening.getMovie().getUuid();
+            UUID roomId = screening.getScreenRoom().getUuid();
+            // Se relee de la base para comparar con la precisión que guarda Postgres (microsegundos).
+            OffsetDateTime startsAt = movieScreeningRepository.findById(screening.getUuid()).orElseThrow().getStartsAt();
+
+            assertThatThrownBy(() -> movieScreeningService.update(screening.getUuid(), new CreateMovieScreeningDTO(
+                    movieId, roomId, startsAt.plusHours(5), new BigDecimal("10.00"))))
+                    .isInstanceOfSatisfying(ConflictException.class,
+                            ex -> assertThat(ex.getCode()).isEqualTo(ErrorCode.RESOURCE_IN_USE));
+
+            assertThat(movieScreeningService.update(screening.getUuid(), new CreateMovieScreeningDTO(
+                    movieId, roomId, startsAt, new BigDecimal("12.00"))).basePrice())
+                    .isEqualByComparingTo("12.00");
         }
     }
 

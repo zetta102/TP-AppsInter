@@ -16,8 +16,6 @@ import java.util.UUID;
 @Repository
 public interface InventoryRepository extends JpaRepository<Inventory, UUID> {
 
-    List<Inventory> findByCategory(ProductCategory category);
-
     List<Inventory> findByUuidIn(List<UUID> uuids);
 
     Page<Inventory> findByCategory(ProductCategory category, Pageable pageable);

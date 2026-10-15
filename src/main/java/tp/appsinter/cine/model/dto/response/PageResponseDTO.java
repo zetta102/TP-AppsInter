@@ -20,9 +20,6 @@ public record PageResponseDTO<T>(
         String sort
 ) {
 
-    public static final int DEFAULT_PAGE_SIZE = 20;
-    public static final int MAX_PAGE_SIZE = 100;
-
     public static <E, T> PageResponseDTO<T> from(Page<E> page, Function<E, T> mapper) {
         return from(page, page.getContent().stream().map(mapper).toList());
     }

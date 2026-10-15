@@ -2,6 +2,7 @@ package tp.appsinter.cine.model.entities;
 
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.BatchSize;
 import tp.appsinter.cine.model.utils.MovieGenre;
 
 import java.util.ArrayList;
@@ -27,7 +28,12 @@ public class Movie {
     @Column(nullable = false)
     private String movieName;
 
+    /*
+     * Ambas colecciones se cargan en lotes: sin @BatchSize una página de cartelera dispara dos
+     * consultas por película (géneros y elenco) además de la consulta principal.
+     */
     @ElementCollection(fetch = FetchType.EAGER)
+    @BatchSize(size = 50)
     @CollectionTable(name = "movie_genre", joinColumns = @JoinColumn(name = "movie_id"))
     @Enumerated(EnumType.STRING)
     @Column(name = "genre", nullable = false)
@@ -43,6 +49,7 @@ public class Movie {
     private String director;
 
     @ElementCollection(fetch = FetchType.EAGER)
+    @BatchSize(size = 50)
     @CollectionTable(name = "movie_main_cast", joinColumns = @JoinColumn(name = "movie_id"))
     @Column(name = "actor", nullable = false)
     @Builder.Default
