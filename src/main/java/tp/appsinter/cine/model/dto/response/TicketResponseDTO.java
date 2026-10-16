@@ -1,11 +1,13 @@
 package tp.appsinter.cine.model.dto.response;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import tp.appsinter.cine.model.entities.Ticket;
 import tp.appsinter.cine.model.utils.SeatType;
 
 import java.math.BigDecimal;
 import java.util.UUID;
 
+@Schema(name = "Ticket")
 public record TicketResponseDTO(
         UUID uuid,
         UUID seatId,

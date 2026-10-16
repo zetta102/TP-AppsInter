@@ -1,5 +1,7 @@
 package tp.appsinter.cine.model.dto.response;
 
+import io.swagger.v3.oas.annotations.media.Schema;
+
 /**
  * Un valor de enumeración junto con la etiqueta que corresponde mostrar.
  *
@@ -11,5 +13,6 @@ package tp.appsinter.cine.model.dto.response;
  * @param label texto legible, incluidos los casos que no se deducen del nombre, como {@code THREED}
  *              → {@code 3D}
  */
+@Schema(name = "EnumValue")
 public record EnumValueResponseDTO(String value, String label) {
 }

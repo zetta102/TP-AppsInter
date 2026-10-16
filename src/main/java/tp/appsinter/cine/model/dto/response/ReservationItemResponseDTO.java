@@ -1,10 +1,12 @@
 package tp.appsinter.cine.model.dto.response;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import tp.appsinter.cine.model.entities.ReservationItem;
 
 import java.math.BigDecimal;
 import java.util.UUID;
 
+@Schema(name = "ReservationItem")
 public record ReservationItemResponseDTO(
         UUID uuid,
         UUID inventoryId,

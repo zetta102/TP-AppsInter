@@ -2,6 +2,7 @@ package tp.appsinter.cine.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
@@ -48,6 +49,7 @@ public class ReservationService {
     private final MovieScreeningService movieScreeningService;
     private final UserService userService;
     private final SeatHoldService seatHoldService;
+    private final ApplicationEventPublisher events;
 
     static List<String> distinctSorted(List<Seat> seats, Function<Seat, String> coordinate) {
         return seats.stream()
@@ -108,6 +110,7 @@ public class ReservationService {
             // Se guarda dentro de la transacción para que la restricción única (función, butaca)
             // aflore aquí y no al confirmar.
             Reservation saved = reservationRepository.saveAndFlush(reservation);
+            events.publishEvent(new SeatsChangedEvent(screening.getUuid(), request.seatIds()));
             return CreateReservationResponseDTO.from(saved);
         } catch (DataIntegrityViolationException ex) {
             log.debug("Concurrent booking rejected for screening {}", screening.getUuid(), ex);
@@ -175,12 +178,13 @@ public class ReservationService {
      *
      * <p>Es el único lugar donde vive la cadena de reglas de la compra, para que presupuestar y
      * confirmar no puedan discrepar. Las comprobaciones van de la más barata a la más cara y de la
-     * más general a la más específica: primero que la función exista y no haya empezado, después que
-     * las butacas existan y pertenezcan a la sala, después que estén libres, y recién al final la
-     * confitería.
+     * más general a la más específica: primero que la función exista, no esté archivada y no haya
+     * empezado, después que las butacas existan y pertenezcan a la sala, después que estén libres, y
+     * recién al final la confitería, que tampoco puede estar archivada.
      */
     private PricedBasket price(CreateReservationDTO request) {
         MovieScreening screening = movieScreeningService.getScreening(request.movieScreeningId());
+        MovieScreeningService.requireActive(screening);
 
         if (screening.getStartsAt().isBefore(OffsetDateTime.now())) {
             throw BusinessRuleException.screeningStarted(screening.getUuid(), screening.getStartsAt());
@@ -227,6 +231,9 @@ public class ReservationService {
         List<PricedProduct> priced = new ArrayList<>(products.size());
         for (ReservationItemRequestDTO product : products) {
             Inventory inventory = byId.get(product.inventoryId());
+            if (inventory.isArchived()) {
+                throw BusinessRuleException.resourceArchived("Inventory product", inventory.getUuid());
+            }
             if (inventory.getQuantity() < product.quantity()) {
                 throw BusinessRuleException.insufficientStock(
                         "Only %d unit(s) of '%s' are in stock".formatted(
@@ -316,7 +323,10 @@ public class ReservationService {
             Inventory inventory = item.getInventory();
             inventory.setQuantity(inventory.getQuantity() + item.getQuantity());
         });
-        return CreateReservationResponseDTO.from(reservationRepository.saveAndFlush(reservation));
+        Reservation saved = reservationRepository.saveAndFlush(reservation);
+        events.publishEvent(new SeatsChangedEvent(screening.getUuid(),
+                reservation.getTickets().stream().map(ticket -> ticket.getSeat().getUuid()).toList()));
+        return CreateReservationResponseDTO.from(saved);
     }
 
     public CreateReservationResponseDTO findById(UUID uuid, String userEmail, boolean isAdmin) {

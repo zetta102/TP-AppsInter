@@ -9,6 +9,7 @@ import org.springframework.stereotype.Repository;
 import tp.appsinter.cine.model.entities.Movie;
 import tp.appsinter.cine.model.utils.MovieGenre;
 
+import java.time.OffsetDateTime;
 import java.util.Collection;
 import java.util.UUID;
 
@@ -21,6 +22,7 @@ public interface MovieRepository extends JpaRepository<Movie, UUID> {
      *
      * @param genres {@code null} para no filtrar por género; una lista vacía no se admite porque
      *               no dejaría pasar nada
+     * @param includeArchived si es falso, las películas archivadas no aparecen
      */
     @Query("""
             select distinct m
@@ -29,9 +31,31 @@ public interface MovieRepository extends JpaRepository<Movie, UUID> {
             where (:search is null or lower(m.movieName) like lower(concat('%', cast(:search as String), '%')))
               and (:genres is null or g in :genres)
               and (:releaseYear is null or m.releaseYear = :releaseYear)
+              and (:includeArchived = true or m.archivedAt is null)
             """)
     Page<Movie> search(@Param("search") String search,
                        @Param("genres") Collection<MovieGenre> genres,
                        @Param("releaseYear") Integer releaseYear,
+                       @Param("includeArchived") boolean includeArchived,
                        Pageable pageable);
+
+    /**
+     * Películas vigentes con al menos una función vigente que empieza dentro de la ventana. Con
+     * {@code to} nulo la ventana no tiene fin (ver {@link MovieScreeningRepository#search} sobre
+     * {@code coalesce}).
+     */
+    @Query("""
+            select m
+            from Movie m
+            where m.archivedAt is null
+              and exists (select 1
+                          from MovieScreening s
+                          where s.movie = m
+                            and s.archivedAt is null
+                            and s.startsAt >= :from
+                            and s.startsAt <= coalesce(:to, s.startsAt))
+            """)
+    Page<Movie> findNowShowing(@Param("from") OffsetDateTime from,
+                               @Param("to") OffsetDateTime to,
+                               Pageable pageable);
 }

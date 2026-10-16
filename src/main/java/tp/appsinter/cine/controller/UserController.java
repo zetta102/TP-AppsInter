@@ -1,5 +1,6 @@
 package tp.appsinter.cine.controller;
 
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -24,15 +25,17 @@ import java.util.UUID;
 @Tag(name = "Users")
 public class UserController {
 
-    private static final SortWhitelist SORTABLE = SortWhitelist.of("email", "firstName", "lastName", "role");
-
     private final UserService userService;
 
     @GetMapping
     public PageResponseDTO<CreateUserResponseDTO> findAll(
             @RequestParam(required = false) Role role,
-            @ParameterObject Pageable pageable) {
-        return userService.findAll(role, SORTABLE.apply(pageable));
+            @Parameter(description = "Part of the e-mail, case-insensitive")
+            @RequestParam(required = false) String email,
+            @Parameter(description = "Part of the first name, last name or full name, case-insensitive")
+            @RequestParam(required = false) String name,
+            @ParameterObject @AllowedSort({"email", "firstName", "lastName", "role"}) Pageable pageable) {
+        return userService.findAll(role, email, name, pageable);
     }
 
     @GetMapping("/me")

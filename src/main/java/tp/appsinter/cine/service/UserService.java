@@ -1,8 +1,10 @@
 package tp.appsinter.cine.service;
 
 import lombok.RequiredArgsConstructor;
+import org.jspecify.annotations.Nullable;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -18,6 +20,7 @@ import tp.appsinter.cine.model.entities.User;
 import tp.appsinter.cine.model.utils.Role;
 import tp.appsinter.cine.repository.ReservationRepository;
 import tp.appsinter.cine.repository.UserRepository;
+import tp.appsinter.cine.repository.UserSpecifications;
 import tp.appsinter.cine.security.RefreshTokenService;
 
 import java.time.OffsetDateTime;
@@ -53,10 +56,22 @@ public class UserService {
         return CreateUserResponseDTO.from(userRepository.save(user));
     }
 
-    public PageResponseDTO<CreateUserResponseDTO> findAll(Role role, Pageable pageable) {
-        Page<User> page = role == null
-                ? userRepository.findByDeletedAtIsNull(pageable)
-                : userRepository.findByRoleAndDeletedAtIsNull(role, pageable);
+    /**
+     * Búsqueda de administración sobre las cuentas activas. Todos los filtros son opcionales y se
+     * combinan con «y».
+     *
+     * @param email parte del correo
+     * @param name  parte del nombre, del apellido o del nombre completo
+     */
+    public PageResponseDTO<CreateUserResponseDTO> findAll(@Nullable Role role,
+                                                          @Nullable String email,
+                                                          @Nullable String name,
+                                                          Pageable pageable) {
+        Specification<User> spec = UserSpecifications.active()
+                .and(UserSpecifications.hasRole(role))
+                .and(UserSpecifications.emailContains(email))
+                .and(UserSpecifications.nameContains(name));
+        Page<User> page = userRepository.findAll(spec, pageable);
         return PageResponseDTO.from(page, CreateUserResponseDTO::from);
     }
 

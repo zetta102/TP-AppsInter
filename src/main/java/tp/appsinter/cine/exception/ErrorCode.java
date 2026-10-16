@@ -125,6 +125,14 @@ public enum ErrorCode {
     WRONG_PASSWORD(HttpStatus.UNPROCESSABLE_CONTENT),
 
     /**
+     * Extensión. El recurso está archivado: sigue existiendo y resolviéndose por identificador, pero
+     * no admite operaciones nuevas (bloquear, presupuestar o comprar butacas de una función
+     * archivada, pedir un producto archivado, programar una función de una película o sala
+     * archivada). El contexto lleva {@code resource} e {@code id}.
+     */
+    RESOURCE_ARCHIVED(HttpStatus.UNPROCESSABLE_CONTENT),
+
+    /**
      * Extensión. El recurso existe pero no admite el método HTTP pedido.
      */
     METHOD_NOT_ALLOWED(HttpStatus.METHOD_NOT_ALLOWED),

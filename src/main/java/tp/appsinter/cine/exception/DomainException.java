@@ -26,6 +26,12 @@ public sealed abstract class DomainException extends RuntimeException
     public static final String FIELD_ERRORS = "errors";
 
     /**
+     * Clave de contexto reservada para las violaciones legibles por máquina ({@code List<Violation>})
+     * que acompañan a {@link #FIELD_ERRORS}. Se publica como la propiedad {@code violations}.
+     */
+    public static final String VIOLATIONS = "violations";
+
+    /**
      * Código estable y no localizado que identifica la falla.
      */
     private final ErrorCode code;

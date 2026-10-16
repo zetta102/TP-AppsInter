@@ -45,6 +45,18 @@ public class SeatHoldController {
     }
 
     /**
+     * Reemplaza de una vez las butacas del bloqueo, sin soltar las que siguen elegidas y conservando
+     * su vencimiento. Los errores son los mismos que al crearlo; un bloqueo vencido, soltado o ajeno
+     * responde 404.
+     */
+    @PutMapping("/api/holds/{uuid}")
+    public SeatHoldResponseDTO replace(Authentication authentication,
+                                       @PathVariable UUID uuid,
+                                       @Valid @RequestBody CreateSeatHoldDTO request) {
+        return seatHoldService.replace(uuid, authentication.getName(), request);
+    }
+
+    /**
      * Libera el bloqueo. Es idempotente y siempre responde 204.
      */
     @DeleteMapping("/api/holds/{uuid}")

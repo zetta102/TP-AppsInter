@@ -24,16 +24,6 @@ import java.util.UUID;
 @Tag(name = "Reservations")
 public class ReservationController {
 
-    /**
-     * El contrato expone {@code screening.startsAt} porque es como el cliente llama a la función; la
-     * asociación en el modelo se llama {@code movieScreening}. Sin esta traducción, ordenar por «lo
-     * que viene» fallaría con un error de propiedad desconocida.
-     */
-    private static final SortWhitelist SORTABLE = SortWhitelist.of("createdAt", "status", "totalPrice", "cancelledAt")
-            .alias("screening.startsAt", "movieScreening.startsAt")
-            .alias("screeningStartsAt", "movieScreening.startsAt")
-            .alias("userEmail", "user.email");
-
     private final ReservationService reservationService;
 
     @PostMapping
@@ -44,12 +34,21 @@ public class ReservationController {
         return ResponseEntity.created(URI.create("/api/reservations/" + created.uuid())).body(created);
     }
 
+    /**
+     * El contrato expone {@code screening.startsAt} porque es como el cliente llama a la función; la
+     * asociación en el modelo se llama {@code movieScreening}. Sin esta traducción, ordenar por «lo
+     * que viene» fallaría con un error de propiedad desconocida. La misma lista rige para
+     * {@link #findAll}.
+     */
     @GetMapping
     public PageResponseDTO<CreateReservationResponseDTO> findMine(
             Authentication authentication,
-            ReservationFilterDTO filter,
-            @ParameterObject Pageable pageable) {
-        return reservationService.findMine(authentication.getName(), filter, SORTABLE.apply(pageable));
+            @ParameterObject ReservationFilterDTO filter,
+            @ParameterObject @AllowedSort(value = {"createdAt", "status", "totalPrice", "cancelledAt"}, aliases = {
+                    @AllowedSort.Alias(name = "screening.startsAt", property = "movieScreening.startsAt"),
+                    @AllowedSort.Alias(name = "screeningStartsAt", property = "movieScreening.startsAt"),
+                    @AllowedSort.Alias(name = "userEmail", property = "user.email")}) Pageable pageable) {
+        return reservationService.findMine(authentication.getName(), filter, pageable);
     }
 
     /**
@@ -58,9 +57,12 @@ public class ReservationController {
      */
     @GetMapping("/all")
     public PageResponseDTO<CreateReservationResponseDTO> findAll(
-            ReservationFilterDTO filter,
-            @ParameterObject Pageable pageable) {
-        return reservationService.findAll(filter, SORTABLE.apply(pageable));
+            @ParameterObject ReservationFilterDTO filter,
+            @ParameterObject @AllowedSort(value = {"createdAt", "status", "totalPrice", "cancelledAt"}, aliases = {
+                    @AllowedSort.Alias(name = "screening.startsAt", property = "movieScreening.startsAt"),
+                    @AllowedSort.Alias(name = "screeningStartsAt", property = "movieScreening.startsAt"),
+                    @AllowedSort.Alias(name = "userEmail", property = "user.email")}) Pageable pageable) {
+        return reservationService.findAll(filter, pageable);
     }
 
     @GetMapping("/{uuid}")

@@ -5,6 +5,7 @@ import lombok.*;
 import tp.appsinter.cine.model.utils.ProductCategory;
 
 import java.math.BigDecimal;
+import java.time.OffsetDateTime;
 import java.util.UUID;
 
 /**
@@ -41,4 +42,15 @@ public class Inventory {
 
     @Version
     private Long version;
+
+    /**
+     * Momento en que se archivó, o {@code null} si está vigente. Archivado no es borrado: deja de
+     * ofrecerse, pero sigue resolviéndose por identificador.
+     */
+    @Column(name = "archived_at")
+    private OffsetDateTime archivedAt;
+
+    public boolean isArchived() {
+        return archivedAt != null;
+    }
 }

@@ -1,5 +1,6 @@
 package tp.appsinter.cine.model.dto.response;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import tp.appsinter.cine.model.utils.SeatType;
 
 import java.math.BigDecimal;
@@ -14,6 +15,7 @@ import java.util.UUID;
  * después lo cobra. Los subtotales van desglosados porque la pantalla de pago los muestra por
  * separado y no debería tener que volver a sumarlos.
  */
+@Schema(name = "Quote")
 public record ReservationQuoteResponseDTO(
         List<QuotedTicket> tickets,
         List<QuotedItem> items,

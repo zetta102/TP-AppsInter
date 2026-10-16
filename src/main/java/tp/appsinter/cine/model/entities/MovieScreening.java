@@ -39,4 +39,15 @@ public class MovieScreening {
 
     @Column(name = "base_price", nullable = false, precision = 10, scale = 2)
     private BigDecimal basePrice;
+
+    /**
+     * Momento en que se archivó, o {@code null} si está vigente. Archivado no es borrado: deja de
+     * ofrecerse, pero sigue resolviéndose por identificador.
+     */
+    @Column(name = "archived_at")
+    private OffsetDateTime archivedAt;
+
+    public boolean isArchived() {
+        return archivedAt != null;
+    }
 }

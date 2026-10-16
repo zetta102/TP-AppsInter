@@ -1,5 +1,6 @@
 package tp.appsinter.cine.model.dto.response;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import tp.appsinter.cine.model.entities.Seat;
 import tp.appsinter.cine.model.entities.SeatHold;
 
@@ -15,6 +16,7 @@ import java.util.UUID;
  * segundo evita que el cliente tenga que restarle la hora local al servidor para dibujar una cuenta
  * regresiva.
  */
+@Schema(name = "SeatHold")
 public record SeatHoldResponseDTO(
         UUID uuid,
         UUID screeningId,

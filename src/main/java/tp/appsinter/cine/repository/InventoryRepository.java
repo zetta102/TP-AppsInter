@@ -18,12 +18,22 @@ public interface InventoryRepository extends JpaRepository<Inventory, UUID> {
 
     List<Inventory> findByUuidIn(List<UUID> uuids);
 
-    Page<Inventory> findByCategory(ProductCategory category, Pageable pageable);
-
-    Page<Inventory> findByProductNameContainingIgnoreCase(String productName, Pageable pageable);
-
-    Page<Inventory> findByCategoryAndProductNameContainingIgnoreCase(
-            ProductCategory category, String productName, Pageable pageable);
+    /**
+     * Búsqueda de productos por categoría y por parte del nombre; cualquier filtro nulo no filtra.
+     *
+     * @param includeArchived si es falso, los productos archivados no aparecen
+     */
+    @Query("""
+            select i
+            from Inventory i
+            where (:category is null or i.category = :category)
+              and (:term is null or lower(i.productName) like lower(concat('%', cast(:term as String), '%')))
+              and (:includeArchived = true or i.archivedAt is null)
+            """)
+    Page<Inventory> search(@Param("category") ProductCategory category,
+                           @Param("term") String term,
+                           @Param("includeArchived") boolean includeArchived,
+                           Pageable pageable);
 
     boolean existsByProductNameIgnoreCase(String productName);
 

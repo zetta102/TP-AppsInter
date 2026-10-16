@@ -5,6 +5,7 @@ import lombok.*;
 import org.hibernate.annotations.BatchSize;
 import tp.appsinter.cine.model.utils.MovieGenre;
 
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -75,4 +76,15 @@ public class Movie {
 
     @Column(length = 2048)
     private String trailerUrl;
+
+    /**
+     * Momento en que se archivó, o {@code null} si está vigente. Archivado no es borrado: deja de
+     * ofrecerse, pero sigue resolviéndose por identificador.
+     */
+    @Column(name = "archived_at")
+    private OffsetDateTime archivedAt;
+
+    public boolean isArchived() {
+        return archivedAt != null;
+    }
 }

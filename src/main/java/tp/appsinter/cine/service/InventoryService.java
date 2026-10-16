@@ -106,35 +106,32 @@ public class InventoryService {
 
     public PageResponseDTO<CreateInventoryResponseDTO> findAll(ProductCategory category,
                                                                String search,
+                                                               boolean includeArchived,
                                                                Pageable pageable) {
-        return PageResponseDTO.from(search(category, search, pageable), CreateInventoryResponseDTO::from);
+        return PageResponseDTO.from(search(category, search, includeArchived, pageable),
+                CreateInventoryResponseDTO::from);
     }
 
     /**
-     * Misma búsqueda que {@link #findAll}, pero proyectada al catálogo público: sin stock ni costo.
+     * Misma búsqueda que {@link #findAll}, pero proyectada al catálogo público: sin stock ni costo,
+     * y nunca con productos archivados.
      */
     public PageResponseDTO<ProductResponseDTO> findAllProducts(ProductCategory category,
                                                                String search,
                                                                Pageable pageable) {
-        return PageResponseDTO.from(search(category, search, pageable), ProductResponseDTO::from);
+        return PageResponseDTO.from(search(category, search, false, pageable), ProductResponseDTO::from);
     }
 
     public ProductResponseDTO findProductById(UUID uuid) {
         return ProductResponseDTO.from(getInventory(uuid));
     }
 
-    private Page<Inventory> search(ProductCategory category, String search, Pageable pageable) {
+    private Page<Inventory> search(ProductCategory category,
+                                   String search,
+                                   boolean includeArchived,
+                                   Pageable pageable) {
         String term = search == null || search.isBlank() ? null : search.trim();
-        if (category != null && term != null) {
-            return inventoryRepository.findByCategoryAndProductNameContainingIgnoreCase(category, term, pageable);
-        }
-        if (category != null) {
-            return inventoryRepository.findByCategory(category, pageable);
-        }
-        if (term != null) {
-            return inventoryRepository.findByProductNameContainingIgnoreCase(term, pageable);
-        }
-        return inventoryRepository.findAll(pageable);
+        return inventoryRepository.search(category, term, includeArchived, pageable);
     }
 
     public CreateInventoryResponseDTO findById(UUID uuid) {
@@ -171,6 +168,19 @@ public class InventoryService {
                     .adjustedBy(adjustedBy)
                     .createdAt(OffsetDateTime.now())
                     .build());
+        }
+        return CreateInventoryResponseDTO.from(inventory);
+    }
+
+    /**
+     * Archiva o restaura un producto. Siempre se admite: las reservas que ya lo incluyen conservan
+     * su línea, y desde ese momento deja de ofrecerse en la carta y de poder pedirse.
+     */
+    @Transactional
+    public CreateInventoryResponseDTO archive(UUID uuid, boolean archived) {
+        Inventory inventory = getInventory(uuid);
+        if (archived != inventory.isArchived()) {
+            inventory.setArchivedAt(archived ? OffsetDateTime.now() : null);
         }
         return CreateInventoryResponseDTO.from(inventory);
     }

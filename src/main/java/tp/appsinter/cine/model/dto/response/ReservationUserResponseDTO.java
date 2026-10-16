@@ -1,5 +1,6 @@
 package tp.appsinter.cine.model.dto.response;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import tp.appsinter.cine.model.entities.User;
 
 import java.util.UUID;
@@ -10,6 +11,7 @@ import java.util.UUID;
  * <p>Es una proyección mínima de {@link User}: alcanza para que la consola de administración
  * responda «¿de quién es esta reserva?» sin publicar el rol ni ningún otro dato de la cuenta.
  */
+@Schema(name = "ReservationUser")
 public record ReservationUserResponseDTO(
         UUID uuid,
         String email,

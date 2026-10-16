@@ -8,6 +8,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ProblemDetail;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
+import tp.appsinter.cine.controller.ProblemFactory;
 import tp.appsinter.cine.exception.ErrorCode;
 
 import java.io.IOException;
@@ -29,16 +30,15 @@ public class ProblemDetailWriter {
     public static final String ERROR_CODE_ATTRIBUTE = "cine.errorCode";
 
     private final ObjectMapper objectMapper;
+    private final ProblemFactory problems;
 
     void write(HttpServletRequest request,
                HttpServletResponse response,
                HttpStatus status,
                String detail,
                ErrorCode defaultCode) throws IOException {
-        ProblemDetail problem = ProblemDetail.forStatusAndDetail(status, detail);
-        problem.setTitle(status.getReasonPhrase());
+        ProblemDetail problem = problems.create(status, resolveCode(request, defaultCode), detail);
         problem.setInstance(URI.create(request.getRequestURI()));
-        problem.setProperty("code", resolveCode(request, defaultCode).name());
 
         response.setStatus(status.value());
         response.setContentType(MediaType.APPLICATION_PROBLEM_JSON_VALUE);

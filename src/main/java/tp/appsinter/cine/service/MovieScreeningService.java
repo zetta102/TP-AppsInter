@@ -10,12 +10,15 @@ import tp.appsinter.cine.exception.BusinessRuleException;
 import tp.appsinter.cine.exception.ConflictException;
 import tp.appsinter.cine.exception.NotFoundException;
 import tp.appsinter.cine.model.dto.request.CreateMovieScreeningDTO;
+import tp.appsinter.cine.model.dto.response.CreateMovieResponseDTO;
 import tp.appsinter.cine.model.dto.response.CreateMovieScreeningResponseDTO;
+import tp.appsinter.cine.model.dto.response.NowShowingResponseDTO;
 import tp.appsinter.cine.model.dto.response.PageResponseDTO;
 import tp.appsinter.cine.model.entities.Movie;
 import tp.appsinter.cine.model.entities.MovieScreening;
 import tp.appsinter.cine.model.entities.ScreenRoom;
 import tp.appsinter.cine.model.utils.BusinessConstants;
+import tp.appsinter.cine.repository.MovieRepository;
 import tp.appsinter.cine.repository.MovieScreeningRepository;
 import tp.appsinter.cine.repository.SeatHoldRepository;
 import tp.appsinter.cine.repository.SeatRepository;
@@ -42,6 +45,7 @@ public class MovieScreeningService {
     private static final int TURNOVER_MINUTES = BusinessConstants.SCREENING_TURNOVER_MINUTES;
 
     private final MovieScreeningRepository movieScreeningRepository;
+    private final MovieRepository movieRepository;
     private final MovieService movieService;
     private final ScreenRoomService screenRoomService;
     private final UserService userService;
@@ -51,8 +55,8 @@ public class MovieScreeningService {
 
     @Transactional
     public CreateMovieScreeningResponseDTO create(CreateMovieScreeningDTO request) {
-        Movie movie = movieService.getMovie(request.movieId());
-        ScreenRoom room = screenRoomService.getScreenRoom(request.screenRoomId());
+        Movie movie = movieService.getActiveMovie(request.movieId());
+        ScreenRoom room = screenRoomService.getActiveScreenRoom(request.screenRoomId());
 
         OffsetDateTime startsAt = request.startsAt();
         requireFuture(startsAt);
@@ -71,8 +75,9 @@ public class MovieScreeningService {
     }
 
     /**
-     * @param viewerEmail quien consulta, o {@code null} si es anónimo; sus propios bloqueos de
-     *                    butacas no se descuentan de la disponibilidad, igual que en el mapa
+     * @param viewerEmail     quien consulta, o {@code null} si es anónimo; sus propios bloqueos de
+     *                        butacas no se descuentan de la disponibilidad, igual que en el mapa
+     * @param includeArchived si es falso, las funciones archivadas no aparecen
      */
     public PageResponseDTO<CreateMovieScreeningResponseDTO> search(@Nullable UUID movieId,
                                                                    @Nullable UUID roomId,
@@ -80,6 +85,7 @@ public class MovieScreeningService {
                                                                    @Nullable OffsetDateTime to,
                                                                    boolean upcomingOnly,
                                                                    boolean includeAvailability,
+                                                                   boolean includeArchived,
                                                                    @Nullable String viewerEmail,
                                                                    Pageable pageable) {
         if (movieId != null) {
@@ -90,7 +96,8 @@ public class MovieScreeningService {
         }
         // upcomingOnly es un atajo de "desde ahora" y nunca pisa un from explícito.
         OffsetDateTime effectiveFrom = from != null ? from : (upcomingOnly ? OffsetDateTime.now() : null);
-        Page<MovieScreening> page = movieScreeningRepository.search(movieId, roomId, effectiveFrom, to, pageable);
+        Page<MovieScreening> page = movieScreeningRepository.search(
+                movieId, roomId, effectiveFrom, to, includeArchived, pageable);
         List<CreateMovieScreeningResponseDTO> content =
                 describe(page.getContent(), includeAvailability, viewer(viewerEmail));
         return PageResponseDTO.from(page, content);
@@ -100,6 +107,35 @@ public class MovieScreeningService {
                                                     boolean includeAvailability,
                                                     @Nullable String viewerEmail) {
         return describe(List.of(getScreening(uuid)), includeAvailability, viewer(viewerEmail)).getFirst();
+    }
+
+    /**
+     * Cartelera agregada: una página de películas vigentes con funciones vigentes que empiezan en la
+     * ventana pedida, cada una con esas funciones en orden cronológico y con su disponibilidad.
+     *
+     * <p>Son tres pasos de consultas fijas por página —películas, funciones de esas películas y la
+     * disponibilidad de todas ellas en lote—, sin importar cuántas películas o funciones entren.
+     *
+     * @param from desde cuándo; {@code null} es «ahora»
+     * @param to   hasta cuándo; {@code null} no pone límite
+     */
+    public PageResponseDTO<NowShowingResponseDTO> nowShowing(@Nullable OffsetDateTime from,
+                                                             @Nullable OffsetDateTime to,
+                                                             @Nullable String viewerEmail,
+                                                             Pageable pageable) {
+        OffsetDateTime effectiveFrom = from != null ? from : OffsetDateTime.now();
+        Page<Movie> movies = movieRepository.findNowShowing(effectiveFrom, to, pageable);
+        if (movies.isEmpty()) {
+            return PageResponseDTO.from(movies, List.of());
+        }
+        List<UUID> movieIds = movies.getContent().stream().map(Movie::getUuid).toList();
+        List<MovieScreening> screenings = movieScreeningRepository.findShowingForMovies(movieIds, effectiveFrom, to);
+        Map<UUID, List<CreateMovieScreeningResponseDTO>> byMovie = describe(screenings, true, viewer(viewerEmail))
+                .stream()
+                .collect(Collectors.groupingBy(CreateMovieScreeningResponseDTO::movieId));
+        return PageResponseDTO.from(movies, movie -> new NowShowingResponseDTO(
+                CreateMovieResponseDTO.from(movie),
+                byMovie.getOrDefault(movie.getUuid(), List.of())));
     }
 
     private @Nullable UUID viewer(@Nullable String viewerEmail) {
@@ -168,14 +204,20 @@ public class MovieScreeningService {
     @Transactional
     public CreateMovieScreeningResponseDTO update(UUID uuid, CreateMovieScreeningDTO request) {
         MovieScreening screening = getScreening(uuid);
-        Movie movie = movieService.getMovie(request.movieId());
-        ScreenRoom room = screenRoomService.getScreenRoom(request.screenRoomId());
+        boolean movieChanged = !screening.getMovie().getUuid().equals(request.movieId());
+        boolean roomChanged = !screening.getScreenRoom().getUuid().equals(request.screenRoomId());
+        // Una película o sala archivada no recibe funciones nuevas, pero las que ya tenía siguen
+        // admitiendo cambios de precio.
+        Movie movie = movieChanged
+                ? movieService.getActiveMovie(request.movieId())
+                : screening.getMovie();
+        ScreenRoom room = roomChanged
+                ? screenRoomService.getActiveScreenRoom(request.screenRoomId())
+                : screening.getScreenRoom();
 
         OffsetDateTime startsAt = request.startsAt();
         boolean timeChanged = !sameInstant(screening.getStartsAt(), startsAt);
-        boolean rescheduled = timeChanged
-                || !screening.getMovie().getUuid().equals(movie.getUuid())
-                || !screening.getScreenRoom().getUuid().equals(room.getUuid());
+        boolean rescheduled = timeChanged || movieChanged || roomChanged;
 
         if (rescheduled) {
             if (screening.getStartsAt().isBefore(OffsetDateTime.now())) {
@@ -199,9 +241,48 @@ public class MovieScreeningService {
         return describe(List.of(screening), true, null).getFirst();
     }
 
+    /**
+     * Archiva o restaura una función.
+     *
+     * <p>Archivar una función que todavía no empezó exige que no tenga entradas vigentes
+     * ({@code 409 RESOURCE_IN_USE}): quien las compró espera esa función. Una ya empezada, o una con
+     * entradas sólo canceladas, se archiva siempre. Restaurarla vuelve a ocupar su horario, así que
+     * exige que nadie lo haya tomado ({@code 409 SCREENING_OVERLAP}) y que la película y la sala
+     * sigan vigentes ({@code 422 RESOURCE_ARCHIVED}).
+     */
+    @Transactional
+    public CreateMovieScreeningResponseDTO archive(UUID uuid, boolean archived) {
+        MovieScreening screening = lockScreening(uuid);
+        if (archived != screening.isArchived()) {
+            OffsetDateTime now = OffsetDateTime.now();
+            if (archived) {
+                if (screening.getStartsAt().isAfter(now)) {
+                    requireUnsold(screening);
+                }
+                screening.setArchivedAt(now);
+            } else {
+                movieService.getActiveMovie(screening.getMovie().getUuid());
+                screenRoomService.getActiveScreenRoom(screening.getScreenRoom().getUuid());
+                requireNoOverlap(screening.getScreenRoom(), screening.getStartsAt(), screening.getEndsAt(), uuid);
+                screening.setArchivedAt(null);
+            }
+        }
+        return describe(List.of(screening), true, null).getFirst();
+    }
+
     @Transactional
     public void delete(UUID uuid) {
         movieScreeningRepository.delete(getScreening(uuid));
+    }
+
+    /**
+     * Rechaza operar sobre una función archivada ({@code 422 RESOURCE_ARCHIVED}): no admite
+     * bloqueos, presupuestos ni compras nuevas.
+     */
+    static void requireActive(MovieScreening screening) {
+        if (screening.isArchived()) {
+            throw BusinessRuleException.resourceArchived("Movie screening", screening.getUuid());
+        }
     }
 
     /**
@@ -219,7 +300,7 @@ public class MovieScreeningService {
      */
     private static void requireFuture(OffsetDateTime startsAt) {
         if (!startsAt.isAfter(OffsetDateTime.now())) {
-            throw BusinessRuleException.invalidField("startsAt", "must be a future date");
+            throw BusinessRuleException.invalidField("startsAt", "Future", "must be a future date");
         }
     }
 

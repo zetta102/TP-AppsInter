@@ -1,5 +1,7 @@
 package tp.appsinter.cine.model.dto.response;
 
+import io.swagger.v3.oas.annotations.media.Schema;
+import org.jspecify.annotations.Nullable;
 import tp.appsinter.cine.model.entities.MovieScreening;
 import tp.appsinter.cine.model.entities.Reservation;
 import tp.appsinter.cine.model.utils.ReservationStatus;
@@ -20,6 +22,7 @@ import java.util.UUID;
  * {@code originalTotalPrice} lo que se dejó de cobrar. Las entradas y las líneas de confitería se
  * devuelven igual: cancelar no borra la historia.
  */
+@Schema(name = "Reservation")
 public record CreateReservationResponseDTO(
         UUID uuid,
         ReservationUserResponseDTO user,
@@ -29,9 +32,9 @@ public record CreateReservationResponseDTO(
         String roomName,
         ReservationStatus status,
         BigDecimal totalPrice,
-        BigDecimal originalTotalPrice,
+        @Nullable BigDecimal originalTotalPrice,
         OffsetDateTime createdAt,
-        OffsetDateTime cancelledAt,
+        @Nullable OffsetDateTime cancelledAt,
         List<TicketResponseDTO> tickets,
         List<ReservationItemResponseDTO> items
 ) {

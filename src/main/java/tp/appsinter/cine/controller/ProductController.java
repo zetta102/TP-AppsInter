@@ -25,22 +25,20 @@ import java.util.UUID;
 @Tag(name = "Products", description = "Catálogo público de confitería")
 public class ProductController {
 
+    private final InventoryService inventoryService;
+
     /**
      * Permite ordenar por {@code price} aunque la columna se llame {@code cost}: el cliente no tiene
      * por qué conocer el nombre interno del campo que este recurso justamente le oculta. El stock no
      * se publica, así que tampoco se puede ordenar por él.
      */
-    private static final SortWhitelist SORTABLE = SortWhitelist.of("productName", "category")
-            .alias("price", "cost");
-
-    private final InventoryService inventoryService;
-
     @GetMapping
     public PageResponseDTO<ProductResponseDTO> findAll(
             @RequestParam(required = false) ProductCategory category,
             @RequestParam(required = false) String search,
-            @ParameterObject Pageable pageable) {
-        return inventoryService.findAllProducts(category, search, SORTABLE.apply(pageable));
+            @ParameterObject @AllowedSort(value = {"productName", "category"},
+                    aliases = @AllowedSort.Alias(name = "price", property = "cost")) Pageable pageable) {
+        return inventoryService.findAllProducts(category, search, pageable);
     }
 
     @GetMapping("/{uuid}")

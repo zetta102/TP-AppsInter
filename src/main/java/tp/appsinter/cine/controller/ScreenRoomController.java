@@ -8,6 +8,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import tp.appsinter.cine.model.dto.request.ArchiveRequestDTO;
 import tp.appsinter.cine.model.dto.request.CreateScreenRoomDTO;
 import tp.appsinter.cine.model.dto.response.CreateScreenRoomResponseDTO;
 import tp.appsinter.cine.model.dto.response.CreateSeatResponseDTO;
@@ -26,8 +27,6 @@ import java.util.UUID;
 @Tag(name = "Screen rooms")
 public class ScreenRoomController {
 
-    private static final SortWhitelist SORTABLE = SortWhitelist.of("roomName", "screenRoomType");
-
     private final ScreenRoomService screenRoomService;
     private final SeatService seatService;
 
@@ -39,8 +38,9 @@ public class ScreenRoomController {
 
     @GetMapping
     public PageResponseDTO<CreateScreenRoomResponseDTO> findAll(
-            @ParameterObject Pageable pageable) {
-        return screenRoomService.findAll(SORTABLE.apply(pageable));
+            @RequestParam(defaultValue = "false") boolean includeArchived,
+            @ParameterObject @AllowedSort({"roomName", "screenRoomType"}) Pageable pageable) {
+        return screenRoomService.findAll(includeArchived, pageable);
     }
 
     @GetMapping("/{uuid}")
@@ -62,6 +62,15 @@ public class ScreenRoomController {
     public CreateScreenRoomResponseDTO update(@PathVariable UUID uuid,
                                               @Valid @RequestBody CreateScreenRoomDTO request) {
         return screenRoomService.update(uuid, request);
+    }
+
+    /**
+     * Archiva o restaura la sala con {@code {"archived": true|false}}. Archivarla exige que no le
+     * queden funciones vigentes sin terminar.
+     */
+    @PatchMapping("/{uuid}")
+    public CreateScreenRoomResponseDTO archive(@PathVariable UUID uuid, @Valid @RequestBody ArchiveRequestDTO request) {
+        return screenRoomService.archive(uuid, request.archived());
     }
 
     @DeleteMapping("/{uuid}")

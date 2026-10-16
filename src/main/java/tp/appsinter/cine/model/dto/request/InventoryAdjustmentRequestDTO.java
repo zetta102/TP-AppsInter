@@ -1,5 +1,6 @@
 package tp.appsinter.cine.model.dto.request;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
@@ -14,6 +15,7 @@ import jakarta.validation.constraints.Size;
  *               no describe ningún movimiento y se rechaza.
  * @param reason motivo del ajuste, obligatorio: un historial sin motivos no explica nada
  */
+@Schema(name = "InventoryAdjustmentRequest")
 public record InventoryAdjustmentRequestDTO(
         @NotNull Integer delta,
         @NotBlank @Size(max = 255) String reason

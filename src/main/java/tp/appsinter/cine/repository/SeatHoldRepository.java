@@ -27,7 +27,8 @@ public interface SeatHoldRepository extends JpaRepository<SeatHold, UUID> {
      * Butacas del conjunto pedido que ya están bloqueadas y vigentes por otra persona.
      *
      * @param excludedUserUuid dueño que no cuenta como conflicto, para que ampliar el propio
-     *                         bloqueo no choque consigo mismo
+     *                         bloqueo no choque consigo mismo; {@code null} cuenta todos los
+     *                         bloqueos, como los ve alguien anónimo
      */
     @Query("""
             select seat.uuid
@@ -35,13 +36,13 @@ public interface SeatHoldRepository extends JpaRepository<SeatHold, UUID> {
             join h.seats seat
             where h.movieScreening.uuid = :screeningUuid
               and seat.uuid in :seatUuids
-              and h.user.uuid <> :excludedUserUuid
+              and (:excludedUserUuid is null or h.user.uuid <> :excludedUserUuid)
               and h.releasedAt is null
               and h.expiresAt > :now
             """)
     List<UUID> findHeldSeatIdsAmong(@Param("screeningUuid") UUID screeningUuid,
                                     @Param("seatUuids") Collection<UUID> seatUuids,
-                                    @Param("excludedUserUuid") UUID excludedUserUuid,
+                                    @Param("excludedUserUuid") @Nullable UUID excludedUserUuid,
                                     @Param("now") OffsetDateTime now);
 
     /**
@@ -87,6 +88,13 @@ public interface SeatHoldRepository extends JpaRepository<SeatHold, UUID> {
     List<Object[]> countHeldByScreening(@Param("screeningUuids") Collection<UUID> screeningUuids,
                                         @Param("viewerUuid") @Nullable UUID viewerUuid,
                                         @Param("now") OffsetDateTime now);
+
+    /**
+     * Bloqueos vencidos que nadie soltó: el barrido avisa que sus butacas quedaron libres antes de
+     * borrarlos.
+     */
+    @Query("select h from SeatHold h where h.expiresAt <= :now and h.releasedAt is null")
+    List<SeatHold> findExpiredUnreleased(@Param("now") OffsetDateTime now);
 
     /**
      * Borra los bloqueos ya inertes. Es sólo higiene de la tabla.

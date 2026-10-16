@@ -9,6 +9,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
+import tp.appsinter.cine.model.dto.request.ArchiveRequestDTO;
 import tp.appsinter.cine.model.dto.request.CreateInventoryRequestDTO;
 import tp.appsinter.cine.model.dto.request.InventoryAdjustmentRequestDTO;
 import tp.appsinter.cine.model.dto.response.CreateInventoryResponseDTO;
@@ -26,9 +27,6 @@ import java.util.UUID;
 @Tag(name = "Inventory")
 public class InventoryController {
 
-    private static final SortWhitelist SORTABLE = SortWhitelist.of("productName", "category", "cost", "quantity");
-    private static final SortWhitelist ADJUSTMENTS_SORTABLE = SortWhitelist.of("createdAt", "delta", "resultingStock");
-
     private final InventoryService inventoryService;
 
     @PostMapping
@@ -42,8 +40,9 @@ public class InventoryController {
     public PageResponseDTO<CreateInventoryResponseDTO> findAll(
             @RequestParam(required = false) ProductCategory category,
             @RequestParam(required = false) String search,
-            @ParameterObject Pageable pageable) {
-        return inventoryService.findAll(category, search, SORTABLE.apply(pageable));
+            @RequestParam(defaultValue = "false") boolean includeArchived,
+            @ParameterObject @AllowedSort({"productName", "category", "cost", "quantity"}) Pageable pageable) {
+        return inventoryService.findAll(category, search, includeArchived, pageable);
     }
 
     @GetMapping("/{uuid}")
@@ -57,6 +56,15 @@ public class InventoryController {
                                              @Valid @RequestBody CreateInventoryRequestDTO request) {
         return inventoryService.update(uuid, request,
                 authentication == null ? null : authentication.getName());
+    }
+
+    /**
+     * Archiva o restaura el producto con {@code {"archived": true|false}}. Uno archivado deja de
+     * figurar en la carta y de poder pedirse, y sólo aparece acá con {@code includeArchived=true}.
+     */
+    @PatchMapping("/{uuid}")
+    public CreateInventoryResponseDTO archive(@PathVariable UUID uuid, @Valid @RequestBody ArchiveRequestDTO request) {
+        return inventoryService.archive(uuid, request.archived());
     }
 
     @DeleteMapping("/{uuid}")
@@ -85,7 +93,7 @@ public class InventoryController {
     @GetMapping("/{uuid}/adjustments")
     public PageResponseDTO<InventoryAdjustmentResponseDTO> findAdjustments(
             @PathVariable UUID uuid,
-            @ParameterObject Pageable pageable) {
-        return inventoryService.findAdjustments(uuid, ADJUSTMENTS_SORTABLE.apply(pageable));
+            @ParameterObject @AllowedSort({"createdAt", "delta", "resultingStock"}) Pageable pageable) {
+        return inventoryService.findAdjustments(uuid, pageable);
     }
 }

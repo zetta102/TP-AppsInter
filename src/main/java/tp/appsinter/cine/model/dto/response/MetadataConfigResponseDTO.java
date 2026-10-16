@@ -1,5 +1,6 @@
 package tp.appsinter.cine.model.dto.response;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import java.math.BigDecimal;
 
 /**
@@ -13,6 +14,7 @@ import java.math.BigDecimal;
  * @param currency                 moneda de todos los importes de la API
  * @param seatHoldTtlSeconds       cuánto dura un bloqueo de butacas antes de vencer
  */
+@Schema(name = "MetadataConfig")
 public record MetadataConfigResponseDTO(
         BigDecimal premiumSeatMultiplier,
         int screeningTurnoverMinutes,

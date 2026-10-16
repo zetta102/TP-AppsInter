@@ -4,16 +4,19 @@ import lombok.extern.slf4j.Slf4j;
 import org.hibernate.exception.ConstraintViolationException;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
+import jakarta.validation.ConstraintViolation;
+import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.data.core.PropertyReferenceException;
 import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.AuthenticationException;
+import org.springframework.context.MessageSourceResolvable;
+import org.springframework.validation.FieldError;
 import org.springframework.validation.method.ParameterValidationResult;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -23,11 +26,15 @@ import org.springframework.web.method.annotation.HandlerMethodValidationExceptio
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
 import tp.appsinter.cine.exception.DomainException;
 import tp.appsinter.cine.exception.ErrorCode;
+import tp.appsinter.cine.exception.Violation;
 import tp.appsinter.cine.security.RefreshTokenReusedException;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -40,7 +47,14 @@ import java.util.regex.Pattern;
  */
 @RestControllerAdvice
 @Slf4j
+@RequiredArgsConstructor
 public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
+
+    /**
+     * Atributos de toda restricción que no describen la regla en sí y por lo tanto no se publican
+     * en {@code violations[].params}.
+     */
+    private static final Set<String> NON_PARAMETER_ATTRIBUTES = Set.of("message", "groups", "payload", "flags");
 
     private static final Pattern UNKNOWN_ATTRIBUTE = Pattern.compile("attribute '([^']+)'");
 
@@ -53,6 +67,8 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
      * SQLSTATE de Postgres para una restricción {@code EXCLUDE} violada.
      */
     private static final String EXCLUSION_VIOLATION = "23P01";
+
+    private final ProblemFactory problems;
 
     /**
      * Un {@code sort} sobre una propiedad inexistente llega a Hibernate como una ruta irresoluble.
@@ -84,6 +100,10 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         Object fieldErrors = context.remove(DomainException.FIELD_ERRORS);
         if (fieldErrors != null) {
             problem.setProperty("errors", fieldErrors);
+        }
+        Object violations = context.remove(DomainException.VIOLATIONS);
+        if (violations != null) {
+            problem.setProperty("violations", violations);
         }
         if (!context.isEmpty()) {
             problem.setProperty("context", context);
@@ -184,9 +204,8 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
                                                                   @NonNull HttpHeaders headers,
                                                                   @NonNull HttpStatusCode status,
                                                                   @NonNull WebRequest request) {
-        Map<String, String> errors = new LinkedHashMap<>();
-        exception.getBindingResult().getFieldErrors()
-                .forEach(error -> errors.putIfAbsent(error.getField(), error.getDefaultMessage()));
+        ValidationErrors errors = new ValidationErrors();
+        exception.getBindingResult().getFieldErrors().forEach(error -> errors.add(error.getField(), error, null));
         return validationProblem(errors);
     }
 
@@ -200,33 +219,40 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
             @NonNull HttpHeaders headers,
             @NonNull HttpStatusCode status,
             @NonNull WebRequest request) {
-        Map<String, String> errors = new LinkedHashMap<>();
+        ValidationErrors errors = new ValidationErrors();
         for (ParameterValidationResult result : exception.getParameterValidationResults()) {
             String name = result.getMethodParameter().getParameterName();
-            result.getResolvableErrors().forEach(error ->
-                    errors.putIfAbsent(name == null ? "argument" : name, error.getDefaultMessage()));
+            String field = name == null ? "argument" : name;
+            result.getResolvableErrors().forEach(error -> errors.add(field, error, result));
         }
         return validationProblem(errors);
     }
 
     /**
      * Punto común de todos los errores del framework: completa el cuerpo que arma Spring con el
-     * título y el {@code code} que publica el resto de la API.
+     * {@code type}, el título y el {@code code} que publica el resto de la API.
      */
     @Override
     protected ResponseEntity<Object> createResponseEntity(@Nullable Object body,
                                                           @NonNull HttpHeaders headers,
                                                           @NonNull HttpStatusCode statusCode,
                                                           @NonNull WebRequest request) {
-        if (body instanceof ProblemDetail problem && !hasCode(problem)) {
-            problem.setProperty("code", codeFor(statusCode).name());
+        if (body instanceof ProblemDetail problem) {
+            problems.decorate(problem, existingCode(problem).orElseGet(() -> codeFor(statusCode)));
         }
         return super.createResponseEntity(body, headers, statusCode, request);
     }
 
-    private static boolean hasCode(ProblemDetail problem) {
+    private static Optional<ErrorCode> existingCode(ProblemDetail problem) {
         Map<String, Object> properties = problem.getProperties();
-        return properties != null && properties.containsKey("code");
+        if (properties == null || !(properties.get("code") instanceof String name)) {
+            return Optional.empty();
+        }
+        try {
+            return Optional.of(ErrorCode.valueOf(name));
+        } catch (IllegalArgumentException unknown) {
+            return Optional.empty();
+        }
     }
 
     private static ErrorCode codeFor(HttpStatusCode status) {
@@ -242,9 +268,10 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         };
     }
 
-    private ResponseEntity<Object> validationProblem(Map<String, String> errors) {
+    private ResponseEntity<Object> validationProblem(ValidationErrors errors) {
         ProblemDetail problem = problem("Request validation failed", ErrorCode.VALIDATION_FAILED);
-        problem.setProperty("errors", errors);
+        problem.setProperty("errors", errors.messages);
+        problem.setProperty("violations", errors.violations);
         return ResponseEntity.status(problem.getStatus()).body(problem);
     }
 
@@ -256,10 +283,68 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     }
 
     private ProblemDetail problem(String detail, ErrorCode code) {
-        HttpStatus status = code.status();
-        ProblemDetail problem = ProblemDetail.forStatusAndDetail(status, detail);
-        problem.setTitle(status.getReasonPhrase());
-        problem.setProperty("code", code.name());
-        return problem;
+        return problems.create(code, detail);
+    }
+
+    /**
+     * Acumula los errores de validación en las dos formas publicadas: {@code errors} (primer mensaje
+     * por campo, en inglés) y {@code violations} (todas las restricciones, legibles por máquina).
+     */
+    private static final class ValidationErrors {
+
+        private final Map<String, String> messages = new LinkedHashMap<>();
+        private final List<Violation> violations = new ArrayList<>();
+
+        void add(String field, MessageSourceResolvable error, @Nullable ParameterValidationResult source) {
+            String message = error.getDefaultMessage();
+            messages.putIfAbsent(field, message == null ? "is invalid" : message);
+            violations.add(new Violation(field, constraintName(error), constraintParams(error, source)));
+        }
+
+        /**
+         * El último código de un error de Spring es el más genérico: el nombre simple de la
+         * restricción ({@code Size}) o del fallo de enlace ({@code typeMismatch}).
+         */
+        private static String constraintName(MessageSourceResolvable error) {
+            String[] codes = error.getCodes();
+            return codes == null || codes.length == 0 ? "Invalid" : codes[codes.length - 1];
+        }
+
+        private static Map<String, Object> constraintParams(MessageSourceResolvable error,
+                                                            @Nullable ParameterValidationResult source) {
+            ConstraintViolation<?> violation = unwrapViolation(error, source);
+            if (violation == null) {
+                return Map.of();
+            }
+            Map<String, Object> params = new LinkedHashMap<>();
+            violation.getConstraintDescriptor().getAttributes().forEach((name, value) -> {
+                if (!NON_PARAMETER_ATTRIBUTES.contains(name) && isPublishable(value)) {
+                    params.put(name, value);
+                }
+            });
+            return params;
+        }
+
+        private static @Nullable ConstraintViolation<?> unwrapViolation(MessageSourceResolvable error,
+                                                                 @Nullable ParameterValidationResult source) {
+            try {
+                if (error instanceof FieldError fieldError) {
+                    return fieldError.contains(ConstraintViolation.class)
+                            ? fieldError.unwrap(ConstraintViolation.class)
+                            : null;
+                }
+                return source == null ? null : source.unwrap(error, ConstraintViolation.class);
+            } catch (IllegalArgumentException notAViolation) {
+                return null;
+            }
+        }
+
+        /**
+         * Sólo valores simples: una clase o una anotación anidada no significan nada para el cliente.
+         */
+        private static boolean isPublishable(@Nullable Object value) {
+            return value instanceof Number || value instanceof Boolean || value instanceof CharSequence
+                    || value instanceof Enum<?>;
+        }
     }
 }

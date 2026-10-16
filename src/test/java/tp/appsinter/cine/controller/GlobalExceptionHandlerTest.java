@@ -11,9 +11,11 @@ import tp.appsinter.cine.exception.BusinessRuleException;
 import tp.appsinter.cine.exception.ConflictException;
 import tp.appsinter.cine.exception.DomainException;
 import tp.appsinter.cine.exception.NotFoundException;
+import tp.appsinter.cine.exception.Violation;
 import tp.appsinter.cine.security.RefreshTokenReusedException;
 
 import java.sql.SQLException;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Stream;
@@ -23,7 +25,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 @DisplayName("Problem detail mapping")
 class GlobalExceptionHandlerTest {
 
-    private final GlobalExceptionHandler handler = new GlobalExceptionHandler();
+    private final GlobalExceptionHandler handler = new GlobalExceptionHandler(new ProblemFactory(ProblemFactory.DEFAULT_TYPE_BASE));
 
     @Test
     @DisplayName("publishes every domain error with the status registered for its code")
@@ -42,6 +44,9 @@ class GlobalExceptionHandlerTest {
                             .as(exception.getCode().name())
                             .isEqualTo(exception.getCode().status().value());
                     assertThat(problem.getProperties()).containsEntry("code", exception.getCode().name());
+                    assertThat(problem.getType().toString())
+                            .startsWith(ProblemFactory.DEFAULT_TYPE_BASE)
+                            .endsWith(exception.getCode().name().toLowerCase().replace('_', '-'));
                 });
     }
 
@@ -49,13 +54,15 @@ class GlobalExceptionHandlerTest {
     @DisplayName("publishes service-side field errors like bean validation errors")
     void fieldErrorsUseTheValidationEnvelope() {
         ProblemDetail problem = handler.handleDomain(
-                BusinessRuleException.invalidField("startsAt", "must be a future date"));
+                BusinessRuleException.invalidField("startsAt", "Future", "must be a future date"));
 
         assertThat(problem.getStatus()).isEqualTo(400);
         assertThat(problem.getProperties())
                 .containsEntry("code", "VALIDATION_FAILED")
                 .containsEntry("errors", Map.of("startsAt", "must be a future date"))
+                .containsEntry("violations", List.of(Violation.of("startsAt", "Future")))
                 .doesNotContainKey("context");
+        assertThat(problem.getType()).hasToString("https://cine.example/problems/validation-failed");
     }
 
     @Test

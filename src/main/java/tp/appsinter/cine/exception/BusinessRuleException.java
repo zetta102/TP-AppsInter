@@ -77,11 +77,27 @@ public final class BusinessRuleException extends DomainException {
     /**
      * Un campo es inválido por una regla que depende del estado y no puede expresarse con Bean
      * Validation, por ejemplo «la fecha debe ser futura sólo si cambia». Se publica con el mismo
-     * sobre que la validación de cuerpos: {@code 400 VALIDATION_FAILED} con {@code errors}.
+     * sobre que la validación de cuerpos: {@code 400 VALIDATION_FAILED} con {@code errors} y
+     * {@code violations}.
+     *
+     * @param constraint nombre de la restricción equivalente de Bean Validation ({@code Future}…),
+     *                   publicado como {@code violations[].code}
      */
-    public static BusinessRuleException invalidField(String field, String message) {
+    public static BusinessRuleException invalidField(String field, String constraint, String message) {
+        return invalidField(field, constraint, message, Map.of());
+    }
+
+    /**
+     * Como {@link #invalidField(String, String, String)}, con los parámetros de la restricción
+     * (publicados en {@code violations[].params}).
+     */
+    public static BusinessRuleException invalidField(String field,
+                                                     String constraint,
+                                                     String message,
+                                                     Map<String, Object> params) {
         return new BusinessRuleException("Request validation failed", ErrorCode.VALIDATION_FAILED,
-                Map.of(FIELD_ERRORS, Map.of(field, message)));
+                Map.of(FIELD_ERRORS, Map.of(field, message),
+                        VIOLATIONS, List.of(new Violation(field, constraint, params))));
     }
 
     /**
@@ -89,6 +105,14 @@ public final class BusinessRuleException extends DomainException {
      */
     public static BusinessRuleException wrongPassword() {
         return new BusinessRuleException("Current password is incorrect", ErrorCode.WRONG_PASSWORD, Map.of());
+    }
+
+    /**
+     * El recurso está archivado y no admite la operación pedida.
+     */
+    public static BusinessRuleException resourceArchived(String resource, UUID id) {
+        return new BusinessRuleException("%s %s is archived".formatted(resource, id),
+                ErrorCode.RESOURCE_ARCHIVED, context("resource", resource, "id", id));
     }
 
     /**

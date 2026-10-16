@@ -1,10 +1,12 @@
 package tp.appsinter.cine.model.dto.response;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import tp.appsinter.cine.model.entities.Seat;
 import tp.appsinter.cine.model.utils.SeatType;
 
 import java.util.UUID;
 
+@Schema(name = "Seat")
 public record CreateSeatResponseDTO(
         UUID uuid,
         UUID screenRoomId,

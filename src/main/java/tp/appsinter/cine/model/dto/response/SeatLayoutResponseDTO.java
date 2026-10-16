@@ -1,5 +1,6 @@
 package tp.appsinter.cine.model.dto.response;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import tp.appsinter.cine.model.entities.ScreenRoom;
 
 import java.util.List;
@@ -10,6 +11,7 @@ import java.util.UUID;
  * ordenadas naturalmente, de modo que el cliente puede dibujar la grilla sin deducir sus
  * dimensiones por su cuenta.
  */
+@Schema(name = "SeatLayout")
 public record SeatLayoutResponseDTO(
         UUID screenRoomId,
         String roomName,

@@ -1,25 +1,29 @@
 package tp.appsinter.cine.model.dto.response;
 
+import io.swagger.v3.oas.annotations.media.Schema;
+import org.jspecify.annotations.Nullable;
 import tp.appsinter.cine.model.entities.Movie;
 import tp.appsinter.cine.model.utils.MovieGenre;
 
 import java.util.List;
 import java.util.UUID;
 
+@Schema(name = "Movie")
 public record CreateMovieResponseDTO(
         UUID uuid,
         String movieName,
         List<MovieGenre> genres,
         Integer runtime,
-        String description,
-        String director,
+        @Nullable String description,
+        @Nullable String director,
         List<String> mainCast,
-        String posterUrl,
-        String backdropUrl,
-        Integer releaseYear,
-        String certification,
-        String originalLanguage,
-        String trailerUrl
+        @Nullable String posterUrl,
+        @Nullable String backdropUrl,
+        @Nullable Integer releaseYear,
+        @Nullable String certification,
+        @Nullable String originalLanguage,
+        @Nullable String trailerUrl,
+        boolean archived
 ) {
     public static CreateMovieResponseDTO from(Movie movie) {
         return new CreateMovieResponseDTO(
@@ -35,7 +39,8 @@ public record CreateMovieResponseDTO(
                 movie.getReleaseYear(),
                 movie.getCertification(),
                 movie.getOriginalLanguage(),
-                movie.getTrailerUrl()
+                movie.getTrailerUrl(),
+                movie.isArchived()
         );
     }
 }

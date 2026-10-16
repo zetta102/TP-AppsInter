@@ -1,5 +1,7 @@
 package tp.appsinter.cine.model.dto.response;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+import io.swagger.v3.oas.annotations.media.Schema;
 import org.jspecify.annotations.Nullable;
 import tp.appsinter.cine.model.entities.MovieScreening;
 
@@ -20,7 +22,11 @@ import java.util.UUID;
  * liberarse en minutos.
  *
  * @param heldSeats butacas bloqueadas en este momento por otros clientes (sin contar las propias)
+ * @param archived  si la función está archivada: ya no admite bloqueos ni compras
+ * @param seatMap   mapa de butacas, sólo con {@code include=seatMap}; si no se pidió, el campo no
+ *                  se envía
  */
+@Schema(name = "Screening")
 public record CreateMovieScreeningResponseDTO(
         UUID uuid,
         UUID movieId,
@@ -33,7 +39,9 @@ public record CreateMovieScreeningResponseDTO(
         @Nullable Integer totalSeats,
         @Nullable Integer availableSeats,
         @Nullable Integer heldSeats,
-        @Nullable Boolean soldOut
+        @Nullable Boolean soldOut,
+        boolean archived,
+        @JsonInclude(JsonInclude.Include.NON_NULL) @Nullable SeatMapResponseDTO seatMap
 ) {
     public static CreateMovieScreeningResponseDTO from(MovieScreening screening) {
         return new CreateMovieScreeningResponseDTO(
@@ -45,7 +53,9 @@ public record CreateMovieScreeningResponseDTO(
                 screening.getStartsAt(),
                 screening.getEndsAt(),
                 screening.getBasePrice(),
-                null, null, null, null);
+                null, null, null, null,
+                screening.isArchived(),
+                null);
     }
 
     /**
@@ -71,7 +81,17 @@ public record CreateMovieScreeningResponseDTO(
                 totalSeats,
                 unsold - held,
                 held,
-                unsold == 0
+                unsold == 0,
+                screening.isArchived(),
+                null
         );
+    }
+
+    /**
+     * La misma función con su mapa de butacas adjunto.
+     */
+    public CreateMovieScreeningResponseDTO withSeatMap(SeatMapResponseDTO map) {
+        return new CreateMovieScreeningResponseDTO(uuid, movieId, movieName, screenRoomId, roomName, startsAt,
+                endsAt, basePrice, totalSeats, availableSeats, heldSeats, soldOut, archived, map);
     }
 }

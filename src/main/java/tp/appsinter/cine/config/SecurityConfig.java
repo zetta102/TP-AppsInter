@@ -32,6 +32,16 @@ public class SecurityConfig {
 
     private static final String ADMIN = "ADMIN";
 
+    /**
+     * Lecturas públicas: la carta, los metadatos y la cartelera. Valen también para {@code HEAD},
+     * que Spring Security no equipara a {@code GET}: sin esa regla un {@code HEAD} caía en «requiere
+     * autenticación» y respondía 401 con {@code no-store} en lugar de los encabezados de caché.
+     */
+    private static final String[] PUBLIC_READS = {
+            "/api/products/**", "/api/metadata/**",
+            "/api/movies/**", "/api/screenings/**", "/api/rooms/**", "/api/seats/**"
+    };
+
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final ProblemDetailAuthenticationEntryPoint authenticationEntryPoint;
     private final ProblemDetailAccessDeniedHandler accessDeniedHandler;
@@ -51,10 +61,8 @@ public class SecurityConfig {
                         .requestMatchers("/actuator/health/**", "/actuator/info").permitAll()
                         .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()
                         // La carta y los metadatos son información pública, igual que la cartelera.
-                        .requestMatchers(HttpMethod.GET, "/api/products/**", "/api/metadata/**").permitAll()
-                        .requestMatchers(HttpMethod.GET,
-                                "/api/movies/**", "/api/screenings/**", "/api/rooms/**", "/api/seats/**")
-                        .permitAll()
+                        .requestMatchers(HttpMethod.GET, PUBLIC_READS).permitAll()
+                        .requestMatchers(HttpMethod.HEAD, PUBLIC_READS).permitAll()
                         // Bloquear butacas es cosa de clientes, no de administración, y debe
                         // evaluarse antes de la regla que reserva el resto de /api/screenings.
                         .requestMatchers(HttpMethod.POST, "/api/screenings/*/holds").authenticated()

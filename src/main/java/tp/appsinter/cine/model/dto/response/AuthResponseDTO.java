@@ -1,7 +1,9 @@
 package tp.appsinter.cine.model.dto.response;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.OffsetDateTime;
 
+@Schema(name = "AuthResponse")
 public record AuthResponseDTO(
         String token,
         String tokenType,

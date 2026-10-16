@@ -1,5 +1,6 @@
 package tp.appsinter.cine.model.dto.response;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import tp.appsinter.cine.model.entities.Inventory;
 import tp.appsinter.cine.model.utils.ProductCategory;
 
@@ -14,6 +15,7 @@ import java.util.UUID;
  * dice si queda mercadería sin revelar cuánta, y {@code price}, que es el nombre orientado al
  * cliente de lo que el DTO de administración llama {@code cost}.
  */
+@Schema(name = "Product")
 public record ProductResponseDTO(
         UUID uuid,
         String productName,
@@ -27,7 +29,7 @@ public record ProductResponseDTO(
                 inventory.getProductName(),
                 inventory.getCategory(),
                 inventory.getCost(),
-                inventory.getQuantity() != null && inventory.getQuantity() > 0
+                !inventory.isArchived() && inventory.getQuantity() != null && inventory.getQuantity() > 0
         );
     }
 }

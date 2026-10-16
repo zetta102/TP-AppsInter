@@ -1,5 +1,6 @@
 package tp.appsinter.cine.model.dto.request;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotNull;
 
@@ -15,6 +16,7 @@ import java.util.UUID;
  *                 que ya pasó. La regla la aplica {@code MovieScreeningService}, con la misma
  *                 respuesta {@code 400 VALIDATION_FAILED} que daría la anotación.
  */
+@Schema(name = "ScreeningRequest")
 public record CreateMovieScreeningDTO(
         @NotNull UUID movieId,
         @NotNull UUID screenRoomId,

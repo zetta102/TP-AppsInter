@@ -1,9 +1,11 @@
 package tp.appsinter.cine.model.dto.request;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Positive;
+import org.jspecify.annotations.Nullable;
 
 import java.util.List;
 
@@ -22,13 +24,14 @@ import java.util.List;
  * @param skip        posiciones a saltear, escritas como {@code E5}, para dejar pasillos
  * @param onConflict  qué hacer si alguna posición generada ya existe
  */
+@Schema(name = "GenerateSeatsRequest")
 public record GenerateSeatsRequestDTO(
         @NotNull @Positive @Max(MAX_ROWS) Integer rows,
         @NotNull @Positive @Max(MAX_COLUMNS) Integer columns,
-        @Pattern(regexp = "^[A-Z]{1,2}$", message = "must be one or two uppercase letters") String startRow,
-        List<String> premiumRows,
-        List<String> skip,
-        SeatConflictPolicy onConflict
+        @Pattern(regexp = "^[A-Z]{1,2}$", message = "must be one or two uppercase letters") @Nullable String startRow,
+        @Nullable List<String> premiumRows,
+        @Nullable List<String> skip,
+        @Nullable SeatConflictPolicy onConflict
 ) {
 
     /**

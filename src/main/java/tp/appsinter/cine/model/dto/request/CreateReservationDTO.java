@@ -1,8 +1,10 @@
 package tp.appsinter.cine.model.dto.request;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
+import org.jspecify.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -17,11 +19,12 @@ import java.util.UUID;
  * @param holdId bloqueo temporal del que provienen las butacas, si el cliente creó uno. Es opcional:
  *               sin él la compra sigue funcionando, sólo que expuesta a que otro se adelante.
  */
+@Schema(name = "ReservationRequest")
 public record CreateReservationDTO(
         @NotNull UUID movieScreeningId,
         @NotEmpty List<UUID> seatIds,
-        List<@NotNull @Valid ReservationItemRequestDTO> products,
-        UUID holdId
+        @Nullable List<@NotNull @Valid ReservationItemRequestDTO> products,
+        @Nullable UUID holdId
 ) {
     public CreateReservationDTO {
         seatIds = seatIds == null ? List.of() : seatIds.stream().distinct().toList();

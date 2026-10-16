@@ -4,6 +4,7 @@ import jakarta.persistence.*;
 import lombok.*;
 import tp.appsinter.cine.model.utils.ScreenRoomType;
 
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -38,5 +39,15 @@ public class ScreenRoom {
     public void addSeat(Seat seat) {
         seats.add(seat);
         seat.setScreenRoom(this);
+    }
+    /**
+     * Momento en que se archivó, o {@code null} si está vigente. Archivado no es borrado: deja de
+     * ofrecerse, pero sigue resolviéndose por identificador.
+     */
+    @Column(name = "archived_at")
+    private OffsetDateTime archivedAt;
+
+    public boolean isArchived() {
+        return archivedAt != null;
     }
 }
