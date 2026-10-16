@@ -28,13 +28,20 @@ public interface MovieScreeningRepository extends JpaRepository<MovieScreening, 
     @Query("select s from MovieScreening s where s.uuid = :uuid")
     Optional<MovieScreening> findByIdForUpdate(@Param("uuid") UUID uuid);
 
+    /**
+     * Los límites de fecha usan {@code coalesce} en lugar de {@code :from is null}: PostgreSQL no
+     * puede inferir el tipo de un parámetro {@code OffsetDateTime} en {@code ? is null} y falla con
+     * «could not determine data type of parameter». Con {@code coalesce} el tipo sale de
+     * {@code s.startsAt}, y un límite nulo compara la columna consigo misma (siempre verdadero, porque
+     * {@code startsAt} no admite nulos).
+     */
     @Query("""
             select s
             from MovieScreening s
             where (:movieUuid is null or s.movie.uuid = :movieUuid)
               and (:roomUuid is null or s.screenRoom.uuid = :roomUuid)
-              and (:from is null or s.startsAt >= :from)
-              and (:to is null or s.startsAt <= :to)
+              and s.startsAt >= coalesce(:from, s.startsAt)
+              and s.startsAt <= coalesce(:to, s.startsAt)
             """)
     Page<MovieScreening> search(@Param("movieUuid") UUID movieUuid,
                                 @Param("roomUuid") UUID roomUuid,

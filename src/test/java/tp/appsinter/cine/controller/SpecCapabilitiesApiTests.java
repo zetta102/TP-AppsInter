@@ -218,6 +218,26 @@ class SpecCapabilitiesApiTests {
         }
 
         @Test
+        @DisplayName("lists screenings with and without date bounds")
+        void listsScreenings() throws Exception {
+            // Regresión: sin `from`/`to`, PostgreSQL no podía tipar el parámetro nulo y devolvía 500.
+            mockMvc.perform(get("/api/screenings"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.totalElements").value(1));
+            mockMvc.perform(get("/api/screenings").param("upcomingOnly", "true"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.content[0].uuid").value(screening.getUuid().toString()));
+            mockMvc.perform(get("/api/screenings")
+                            .param("from", OffsetDateTime.now().plusDays(3).toString())
+                            .param("to", OffsetDateTime.now().plusDays(10).toString()))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.totalElements").value(0));
+            mockMvc.perform(get("/api/screenings").param("movieId", screening.getMovie().getUuid().toString()))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.totalElements").value(1));
+        }
+
+        @Test
         @DisplayName("reports availability counts on screenings")
         void reportsAvailability() throws Exception {
             mockMvc.perform(get("/api/screenings/" + screening.getUuid()))
