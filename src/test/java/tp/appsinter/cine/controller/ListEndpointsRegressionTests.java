@@ -10,11 +10,11 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.MvcResult;
-import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
+import org.springframework.test.web.servlet.assertj.MockMvcTester;
+import org.springframework.test.web.servlet.assertj.MvcTestResult;
 import tp.appsinter.cine.DatabaseCleaner;
 import tp.appsinter.cine.PostgresTestcontainersConfiguration;
 import tp.appsinter.cine.model.dto.request.CreateUserRequestDTO;
@@ -36,6 +36,7 @@ import tp.appsinter.cine.repository.ScreenRoomRepository;
 import tp.appsinter.cine.repository.SeatRepository;
 import tp.appsinter.cine.service.UserService;
 
+import java.io.IOException;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.time.OffsetDateTime;
@@ -46,9 +47,6 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
  * Recorre todos los listados paginados contra PostgreSQL real: sin parámetros, con cada filtro
@@ -75,7 +73,7 @@ class ListEndpointsRegressionTests {
     @Autowired
     private JdbcTemplate jdbcTemplate;
     @Autowired
-    private MockMvc mockMvc;
+    private MockMvcTester mvc;
     @Autowired
     private UserService userService;
     @Autowired
@@ -93,7 +91,7 @@ class ListEndpointsRegressionTests {
     private String adminToken;
 
     @BeforeEach
-    void seed() throws Exception {
+    void seed() {
         DatabaseCleaner.truncate(jdbcTemplate);
         UUID customerId = userService.createUser(
                 new CreateUserRequestDTO("Ada", "Lovelace", CUSTOMER_EMAIL, PASSWORD), Role.CUSTOMER).uuid();
@@ -130,18 +128,18 @@ class ListEndpointsRegressionTests {
                 .build());
 
         adminToken = bearer(ADMIN_EMAIL);
-        mockMvc.perform(post("/api/reservations")
+        assertThat(mvc.post().uri("/api/reservations")
                         .header(HttpHeaders.AUTHORIZATION, adminToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"movieScreeningId":"%s","seatIds":["%s"],"products":[{"inventoryId":"%s","quantity":1}]}
                                 """.formatted(screening.getUuid(), seat.getUuid(), popcorn.getUuid())))
-                .andExpect(status().isCreated());
-        mockMvc.perform(post("/api/inventory/{id}/adjustments", popcorn.getUuid())
+                .hasStatus(HttpStatus.CREATED);
+        assertThat(mvc.post().uri("/api/inventory/{id}/adjustments", popcorn.getUuid())
                         .header(HttpHeaders.AUTHORIZATION, adminToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"delta\":5,\"reason\":\"Restock\"}"))
-                .andExpect(status().isOk());
+                .hasStatusOk();
 
         sampleIds.put("movieId", movie.getUuid().toString());
         sampleIds.put("roomId", room.getUuid().toString());
@@ -150,25 +148,20 @@ class ListEndpointsRegressionTests {
         sampleIds.put("/api/inventory", popcorn.getUuid().toString());
     }
 
-    private String bearer(String email) throws Exception {
-        String body = mockMvc.perform(post("/api/auth/login")
+    private String bearer(String email) {
+        return "Bearer " + assertThat(mvc.post().uri("/api/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"email\":\"%s\",\"password\":\"%s\"}".formatted(email, PASSWORD)))
-                .andExpect(status().isOk())
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
-        return "Bearer " + JsonPath.read(body, "$.token");
+                .hasStatusOk()
+                .bodyJson().extractingPath("$.token").asString().actual();
     }
 
     @Test
     @DisplayName("every documented list answers 200 with no filter, each filter alone and each sort")
-    void everyListAnswers() throws Exception {
-        DocumentContext docs = JsonPath.parse(mockMvc.perform(get("/v3/api-docs"))
-                .andExpect(status().isOk())
-                .andReturn()
-                .getResponse()
-                .getContentAsString(StandardCharsets.UTF_8));
+    void everyListAnswers() throws IOException {
+        MvcTestResult apiDocs = mvc.get().uri("/v3/api-docs").exchange();
+        assertThat(apiDocs).hasStatusOk();
+        DocumentContext docs = JsonPath.parse(apiDocs.getResponse().getContentAsString(StandardCharsets.UTF_8));
         Map<String, Map<String, Object>> paths = docs.read("$.paths");
 
         List<String> calls = new ArrayList<>();
@@ -203,10 +196,10 @@ class ListEndpointsRegressionTests {
     }
 
     private void check(String path, Map<String, String> params, List<String> calls, List<String> failures)
-            throws Exception {
-        MockHttpServletRequestBuilder request = get(path).header(HttpHeaders.AUTHORIZATION, adminToken);
+            throws IOException {
+        var request = mvc.get().uri(path).header(HttpHeaders.AUTHORIZATION, adminToken);
         params.forEach(request::param);
-        MvcResult result = mockMvc.perform(request).andReturn();
+        MvcTestResult result = request.exchange();
         String call = path + " " + params;
         calls.add(call);
         if (result.getResponse().getStatus() != 200) {

@@ -1,6 +1,5 @@
 package tp.appsinter.cine.controller;
 
-import com.jayway.jsonpath.JsonPath;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -9,20 +8,20 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
-import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.json.JsonContent;
+import org.springframework.test.web.servlet.assertj.MockMvcTester;
+import org.springframework.test.web.servlet.assertj.MvcTestResult;
 import tp.appsinter.cine.PostgresTestcontainersConfiguration;
 import tp.appsinter.cine.exception.ErrorCode;
 
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
-import java.util.List;
-import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.assertj.core.api.InstanceOfAssertFactories.LIST;
 
 /**
  * El documento OpenAPI es la fuente de los tipos que genera el frontend
@@ -39,88 +38,83 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class OpenApiContractTests {
 
     @Autowired
-    private MockMvc mockMvc;
+    private MockMvcTester mvc;
 
-    private String docs;
+    private JsonContent docs;
 
     @BeforeAll
-    void fetchDocs() throws Exception {
-        docs = mockMvc.perform(get("/v3/api-docs"))
-                .andExpect(status().isOk())
-                .andReturn()
-                .getResponse()
-                .getContentAsString(StandardCharsets.UTF_8);
-        Files.writeString(Path.of("target", "api-docs.json"), docs);
-    }
-
-    private <T> T read(String path) {
-        return JsonPath.read(docs, path);
+    void fetchDocs() throws IOException {
+        MvcTestResult result = mvc.get().uri("/v3/api-docs").exchange();
+        assertThat(result).hasStatusOk();
+        String json = result.getResponse().getContentAsString(StandardCharsets.UTF_8);
+        Files.writeString(Path.of("target", "api-docs.json"), json);
+        docs = new JsonContent(json);
     }
 
     @Test
     @DisplayName("marks non-nullable record components as required and nullable ones as type|null")
     void requiredAndNullable() {
-        List<String> required = read("$.components.schemas.Screening.required");
-        assertThat(required).contains("uuid", "movieName", "startsAt", "heldSeats", "availableSeats");
-        List<String> heldSeatsType = read("$.components.schemas.Screening.properties.heldSeats.type");
-        assertThat(heldSeatsType).containsExactlyInAnyOrder("integer", "null");
+        assertThat(docs).extractingPath("$.components.schemas.Screening.required").asArray()
+                .contains("uuid", "movieName", "startsAt", "heldSeats", "availableSeats");
+        assertThat(docs).extractingPath("$.components.schemas.Screening.properties.heldSeats.type").asArray()
+                .containsExactlyInAnyOrder("integer", "null");
 
-        List<String> movieRequired = read("$.components.schemas.Movie.required");
-        assertThat(movieRequired).contains("uuid", "movieName", "genres", "posterUrl");
-        List<String> posterType = read("$.components.schemas.Movie.properties.posterUrl.type");
-        assertThat(posterType).containsExactlyInAnyOrder("string", "null");
+        assertThat(docs).extractingPath("$.components.schemas.Movie.required").asArray()
+                .contains("uuid", "movieName", "genres", "posterUrl");
+        assertThat(docs).extractingPath("$.components.schemas.Movie.properties.posterUrl.type").asArray()
+                .containsExactlyInAnyOrder("string", "null");
     }
 
     @Test
     @DisplayName("publishes the problem envelope with the error code registry as an enum")
     void problemSchema() {
-        assertThat((String) read("$.components.schemas.Problem.properties.code.$ref"))
+        assertThat(docs).extractingPath("$.components.schemas.Problem.properties.code.$ref")
                 .isEqualTo("#/components/schemas/ErrorCode");
-        List<String> codes = read("$.components.schemas.ErrorCode.enum");
-        assertThat(codes).containsExactlyElementsOf(Arrays.stream(ErrorCode.values()).map(Enum::name).toList());
-        assertThat((String) read("$.components.schemas.Problem.properties.violations.items.$ref"))
+        assertThat(docs).extractingPath("$.components.schemas.ErrorCode.enum").asArray()
+                .containsExactly(Arrays.stream(ErrorCode.values()).map(Enum::name).toArray());
+        assertThat(docs).extractingPath("$.components.schemas.Problem.properties.violations.items.$ref")
                 .isEqualTo("#/components/schemas/Violation");
-        Map<String, Object> defaultResponse = read("$.paths['/api/movies'].get.responses.default");
-        assertThat(defaultResponse).containsKey("content");
+        assertThat(docs).extractingPath("$.paths['/api/movies'].get.responses.default").asMap()
+                .containsKey("content");
     }
 
     @Test
     @DisplayName("documents each list's sort whitelist as x-sort-properties")
     void sortProperties() {
-        List<List<String>> movies = read("$.paths['/api/movies'].get.parameters[?(@.name == 'sort')]['x-sort-properties']");
-        assertThat(movies).singleElement().asInstanceOf(org.assertj.core.api.InstanceOfAssertFactories.LIST)
+        assertThat(docs).extractingPath("$.paths['/api/movies'].get.parameters[?(@.name == 'sort')]['x-sort-properties']")
+                .asArray().singleElement().asInstanceOf(LIST)
                 .contains("movieName", "releaseYear");
-        List<List<String>> products = read("$.paths['/api/products'].get.parameters[?(@.name == 'sort')]['x-sort-properties']");
-        assertThat(products).singleElement().asInstanceOf(org.assertj.core.api.InstanceOfAssertFactories.LIST)
+        assertThat(docs).extractingPath("$.paths['/api/products'].get.parameters[?(@.name == 'sort')]['x-sort-properties']")
+                .asArray().singleElement().asInstanceOf(LIST)
                 .contains("price");
     }
 
     @Test
     @DisplayName("keeps a field omitted when null optional instead of nullable")
     void omittedFieldsAreOptional() {
-        List<String> required = read("$.components.schemas.Screening.required");
-        assertThat(required).contains("archived").doesNotContain("seatMap");
-        assertThat((String) read("$.components.schemas.Screening.properties.seatMap.$ref"))
+        assertThat(docs).extractingPath("$.components.schemas.Screening.required").asArray()
+                .contains("archived").doesNotContain("seatMap");
+        assertThat(docs).extractingPath("$.components.schemas.Screening.properties.seatMap.$ref")
                 .isEqualTo("#/components/schemas/SeatMap");
     }
 
     @Test
     @DisplayName("documents the seat stream payload and the request bodies of the new endpoints")
     void newEndpoints() {
-        assertThat((String) read("$.paths['/api/screenings/{uuid}/seats/stream'].get.responses['200']"
-                + ".content['text/event-stream'].schema.items.$ref"))
+        assertThat(docs).extractingPath("$.paths['/api/screenings/{uuid}/seats/stream'].get.responses['200']"
+                        + ".content['text/event-stream'].schema.items.$ref")
                 .isEqualTo("#/components/schemas/SeatState");
-        assertThat(docs).doesNotContain("\"SseEmitter\"");
-        List<String> archiveRequired = read("$.components.schemas.ArchiveRequest.required");
-        assertThat(archiveRequired).containsExactly("archived");
-        List<String> includeValues = read("$.paths['/api/screenings/{uuid}'].get.parameters[?(@.name == 'include')].schema.items.enum[*]");
-        assertThat(includeValues).containsExactly("seatMap");
+        assertThat(docs.getJson()).doesNotContain("\"SseEmitter\"");
+        assertThat(docs).extractingPath("$.components.schemas.ArchiveRequest.required").asArray()
+                .containsExactly("archived");
+        assertThat(docs).extractingPath("$.paths['/api/screenings/{uuid}'].get.parameters[?(@.name == 'include')].schema.items.enum[*]")
+                .asArray().containsExactly("seatMap");
     }
 
     @Test
     @DisplayName("publishes enums as named schemas")
     void enumsAsRefs() {
-        List<String> genres = read("$.components.schemas.MovieGenre.enum");
-        assertThat(genres).contains("ACTION", "DRAMA");
+        assertThat(docs).extractingPath("$.components.schemas.MovieGenre.enum").asArray()
+                .contains("ACTION", "DRAMA");
     }
 }

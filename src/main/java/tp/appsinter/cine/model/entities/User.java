@@ -2,6 +2,7 @@ package tp.appsinter.cine.model.entities;
 
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.UuidGenerator;
 import tp.appsinter.cine.model.utils.Role;
 
 import java.util.ArrayList;
@@ -21,7 +22,8 @@ import java.util.UUID;
 public class User {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
+    @GeneratedValue
+    @UuidGenerator(style = UuidGenerator.Style.VERSION_7)
     @EqualsAndHashCode.Include
     private UUID uuid;
 

@@ -155,6 +155,8 @@ class BookingFlowTests {
             assertAll(
                     () -> assertThat(response.tickets()).hasSize(2),
                     () -> assertThat(response.status()).isEqualTo(ReservationStatus.CONFIRMED),
+                    // Los identificadores nuevos son UUIDv7: ordenados por creación y amigables con el índice.
+                    () -> assertThat(response.uuid().version()).isEqualTo(7),
                     () -> assertThat(response.totalPrice()).isEqualByComparingTo(new BigDecimal("25.00")),
                     () -> assertThat(ticketRepository.findBookedSeatIds(screening.getUuid()))
                             .containsExactlyInAnyOrder(normalSeat.getUuid(), premiumSeat.getUuid()));

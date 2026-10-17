@@ -30,13 +30,15 @@ public final class UserSpecifications {
     }
 
     public static Specification<User> hasRole(@Nullable Role role) {
-        return role == null ? always() : (root, query, builder) -> builder.equal(root.get("role"), role);
+        return role == null
+                ? Specification.unrestricted()
+                : (root, query, builder) -> builder.equal(root.get("role"), role);
     }
 
     public static Specification<User> emailContains(@Nullable String email) {
         String pattern = containsPattern(email);
         return pattern == null
-                ? always()
+                ? Specification.unrestricted()
                 : (root, query, builder) -> builder.like(builder.lower(root.get("email")), pattern, ESCAPE);
     }
 
@@ -47,7 +49,7 @@ public final class UserSpecifications {
     public static Specification<User> nameContains(@Nullable String name) {
         String pattern = containsPattern(name);
         if (pattern == null) {
-            return always();
+            return Specification.unrestricted();
         }
         return (root, query, builder) -> {
             Expression<String> firstName = builder.lower(root.get("firstName"));
@@ -69,9 +71,5 @@ public final class UserSpecifications {
                 .replace("%", "\\%")
                 .replace("_", "\\_");
         return "%" + escaped + "%";
-    }
-
-    private static Specification<User> always() {
-        return (root, query, builder) -> builder.conjunction();
     }
 }

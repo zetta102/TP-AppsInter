@@ -3,7 +3,6 @@ package tp.appsinter.cine.security;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
-import org.jspecify.annotations.NonNull;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.web.AuthenticationEntryPoint;
@@ -23,9 +22,9 @@ public class ProblemDetailAuthenticationEntryPoint implements AuthenticationEntr
     private final ProblemDetailWriter writer;
 
     @Override
-    public void commence(@NonNull HttpServletRequest request,
-                         @NonNull HttpServletResponse response,
-                         @NonNull AuthenticationException authException) throws IOException {
+    public void commence(HttpServletRequest request,
+                         HttpServletResponse response,
+                         AuthenticationException authException) throws IOException {
         // Una familia revocada por reutilización no es lo mismo que unas credenciales cualquiera: el
         // cliente tiene que dejar de reintentar y volver a pedir el inicio de sesión.
         if (authException instanceof RefreshTokenReusedException) {

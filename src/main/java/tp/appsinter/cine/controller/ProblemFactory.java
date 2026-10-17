@@ -1,5 +1,6 @@
 package tp.appsinter.cine.controller;
 
+import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
@@ -32,7 +33,7 @@ public class ProblemFactory {
     /**
      * Cuerpo con el estado registrado para el código.
      */
-    public ProblemDetail create(ErrorCode code, String detail) {
+    public ProblemDetail create(ErrorCode code, @Nullable String detail) {
         return create(code.status(), code, detail);
     }
 
@@ -40,7 +41,7 @@ public class ProblemFactory {
      * Cuerpo con un estado explícito, para los pocos casos en que el estado lo decide quien escribe
      * la respuesta y no el código.
      */
-    public ProblemDetail create(HttpStatusCode status, ErrorCode code, String detail) {
+    public ProblemDetail create(HttpStatusCode status, ErrorCode code, @Nullable String detail) {
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(status, detail);
         decorate(problem, code);
         return problem;

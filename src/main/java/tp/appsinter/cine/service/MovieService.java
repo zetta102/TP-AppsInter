@@ -1,6 +1,7 @@
 package tp.appsinter.cine.service;
 
 import lombok.RequiredArgsConstructor;
+import org.jspecify.annotations.Nullable;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -28,7 +29,7 @@ public class MovieService {
     private final MovieRepository movieRepository;
     private final MovieScreeningRepository movieScreeningRepository;
 
-    private static String normalise(String search) {
+    private static @Nullable String normalise(@Nullable String search) {
         return search == null || search.isBlank() ? null : search.trim();
     }
 
@@ -49,9 +50,9 @@ public class MovieService {
     /**
      * @param genres géneros a coincidir; una película entra si tiene al menos uno de ellos
      */
-    public PageResponseDTO<CreateMovieResponseDTO> findAll(String search,
-                                                           List<MovieGenre> genres,
-                                                           Integer releaseYear,
+    public PageResponseDTO<CreateMovieResponseDTO> findAll(@Nullable String search,
+                                                           @Nullable List<MovieGenre> genres,
+                                                           @Nullable Integer releaseYear,
                                                            boolean includeArchived,
                                                            Pageable pageable) {
         List<MovieGenre> requested = genres == null || genres.isEmpty() ? null : genres;

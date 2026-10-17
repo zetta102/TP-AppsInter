@@ -2,7 +2,6 @@ package tp.appsinter.cine.config;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.jspecify.annotations.NonNull;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.stereotype.Component;
@@ -24,7 +23,7 @@ public class AdminBootstrapRunner implements ApplicationRunner {
     private final UserService userService;
 
     @Override
-    public void run(@NonNull ApplicationArguments args) {
+    public void run(ApplicationArguments args) {
         if (userRepository.existsByRole(Role.ADMIN)) {
             log.debug("An administrator already exists, skipping bootstrap");
             return;

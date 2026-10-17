@@ -1,6 +1,5 @@
 package tp.appsinter.cine.controller;
 
-import com.jayway.jsonpath.JsonPath;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -10,18 +9,15 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.assertj.MockMvcTester;
 import tp.appsinter.cine.DatabaseCleaner;
 import tp.appsinter.cine.PostgresTestcontainersConfiguration;
 import tp.appsinter.cine.repository.UserRepository;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -38,7 +34,7 @@ class AuthAndReservationApiTests {
     @Autowired
     private JdbcTemplate jdbcTemplate;
     @Autowired
-    private MockMvc mockMvc;
+    private MockMvcTester mvc;
     @Autowired
     private UserRepository userRepository;
 
@@ -47,24 +43,25 @@ class AuthAndReservationApiTests {
         DatabaseCleaner.truncate(jdbcTemplate);
     }
 
-    private void register() throws Exception {
-        mockMvc.perform(post("/api/auth/register")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(SIGN_UP_BODY))
-                .andExpect(status().isCreated());
+    private MockMvcTester.MockMvcRequestBuilder signUp() {
+        return mvc.post().uri("/api/auth/register")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(SIGN_UP_BODY);
     }
 
-    private String login() throws Exception {
-        String body = mockMvc.perform(post("/api/auth/login")
+    private void register() {
+        assertThat(signUp()).hasStatus(HttpStatus.CREATED);
+    }
+
+    private String login() {
+        return assertThat(mvc.post().uri("/api/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"email":"grace@example.com","password":"supersecret"}
                                 """))
-                .andExpect(status().isOk())
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
-        return JsonPath.read(body, "$.token");
+                .hasStatusOk()
+                .bodyJson()
+                .extractingPath("$.token").asString().actual();
     }
 
     @Nested
@@ -73,14 +70,13 @@ class AuthAndReservationApiTests {
 
         @Test
         @DisplayName("registers a customer and never returns the password")
-        void registersCustomer() throws Exception {
-            mockMvc.perform(post("/api/auth/register")
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content(SIGN_UP_BODY))
-                    .andExpect(status().isCreated())
-                    .andExpect(jsonPath("$.email").value(EMAIL))
-                    .andExpect(jsonPath("$.role").value("CUSTOMER"))
-                    .andExpect(jsonPath("$.password").doesNotExist());
+        void registersCustomer() {
+            assertThat(signUp())
+                    .hasStatus(HttpStatus.CREATED)
+                    .bodyJson()
+                    .hasPathSatisfying("$.email", email -> assertThat(email).isEqualTo(EMAIL))
+                    .hasPathSatisfying("$.role", role -> assertThat(role).isEqualTo("CUSTOMER"))
+                    .doesNotHavePath("$.password");
 
             assertThat(userRepository.findByEmailIgnoreCase(EMAIL))
                     .hasValueSatisfying(user -> assertThat(user.getPassword()).isNotEqualTo(PASSWORD));
@@ -88,36 +84,34 @@ class AuthAndReservationApiTests {
 
         @Test
         @DisplayName("rejects an invalid payload with a validation problem detail")
-        void rejectsInvalidPayload() throws Exception {
-            mockMvc.perform(post("/api/auth/register")
+        void rejectsInvalidPayload() {
+            assertThat(mvc.post().uri("/api/auth/register")
                             .contentType(MediaType.APPLICATION_JSON)
                             .content("""
                                     {"firstName":"","lastName":"","email":"not-an-email","password":"short"}
                                     """))
-                    .andExpect(status().isBadRequest())
-                    .andExpect(jsonPath("$.errors.email").exists());
+                    .hasStatus(HttpStatus.BAD_REQUEST)
+                    .bodyJson()
+                    .hasPath("$.errors.email");
         }
 
         @Test
         @DisplayName("rejects a duplicate email with 409")
-        void rejectsDuplicateEmail() throws Exception {
+        void rejectsDuplicateEmail() {
             register();
-            mockMvc.perform(post("/api/auth/register")
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content(SIGN_UP_BODY))
-                    .andExpect(status().isConflict());
+            assertThat(signUp()).hasStatus(HttpStatus.CONFLICT);
         }
 
         @Test
         @DisplayName("rejects bad credentials with 401")
-        void rejectsBadCredentials() throws Exception {
+        void rejectsBadCredentials() {
             register();
-            mockMvc.perform(post("/api/auth/login")
+            assertThat(mvc.post().uri("/api/auth/login")
                             .contentType(MediaType.APPLICATION_JSON)
                             .content("""
                                     {"email":"grace@example.com","password":"wrongpassword"}
                                     """))
-                    .andExpect(status().isUnauthorized());
+                    .hasStatus(HttpStatus.UNAUTHORIZED);
         }
     }
 
@@ -127,35 +121,36 @@ class AuthAndReservationApiTests {
 
         @Test
         @DisplayName("requires a token to list reservations")
-        void requiresToken() throws Exception {
-            mockMvc.perform(get("/api/reservations")).andExpect(status().isUnauthorized());
+        void requiresToken() {
+            assertThat(mvc.get().uri("/api/reservations")).hasStatus(HttpStatus.UNAUTHORIZED);
         }
 
         @Test
         @DisplayName("allows a logged-in customer to list their reservations")
-        void allowsAuthenticatedCustomer() throws Exception {
+        void allowsAuthenticatedCustomer() {
             register();
             String token = login();
 
-            mockMvc.perform(get("/api/reservations").header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
-                    .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.content").isArray());
+            assertThat(mvc.get().uri("/api/reservations").header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                    .hasStatusOk()
+                    .bodyJson()
+                    .extractingPath("$.content").asArray();
         }
 
         @Test
         @DisplayName("exposes the movie catalogue anonymously but blocks writes for customers")
-        void protectsCatalogueWrites() throws Exception {
+        void protectsCatalogueWrites() {
             register();
             String token = login();
 
-            mockMvc.perform(get("/api/movies")).andExpect(status().isOk());
-            mockMvc.perform(post("/api/movies")
+            assertThat(mvc.get().uri("/api/movies")).hasStatusOk();
+            assertThat(mvc.post().uri("/api/movies")
                             .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
                             .contentType(MediaType.APPLICATION_JSON)
                             .content("""
                                     {"movieName":"Alien","genres":["THRILLER"],"runtime":117}
                                     """))
-                    .andExpect(status().isForbidden());
+                    .hasStatus(HttpStatus.FORBIDDEN);
         }
     }
 }

@@ -2,6 +2,7 @@ package tp.appsinter.cine.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.Nullable;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -213,7 +214,7 @@ public class SeatHoldService {
      * @param viewerUuid quien mira; sus propios bloqueos no se marcan, porque para esa persona esas
      *                   butacas sí están disponibles
      */
-    public List<UUID> findHeldSeatIds(UUID screeningUuid, UUID viewerUuid) {
+    public List<UUID> findHeldSeatIds(UUID screeningUuid, @Nullable UUID viewerUuid) {
         return seatHoldRepository.findHeldSeatIds(screeningUuid, viewerUuid, OffsetDateTime.now());
     }
 

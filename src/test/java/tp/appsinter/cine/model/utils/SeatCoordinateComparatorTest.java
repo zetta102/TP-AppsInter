@@ -14,13 +14,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 class SeatCoordinateComparatorTest {
 
     @ParameterizedTest(name = "{0} sorts before {1}")
-    @CsvSource({
-            "A2, A10",
-            "A, B",
-            "1, 2",
-            "2, 10",
-            "B1, B2"
-    })
+    @CsvSource(textBlock = """
+            A2, A10
+            A,  B
+            1,  2
+            2,  10
+            B1, B2
+            """)
     @DisplayName("orders numeric segments by value rather than lexicographically")
     void ordersNumericSegmentsByValue(String smaller, String larger) {
         assertThat(SeatCoordinateComparator.INSTANCE.compare(smaller, larger)).isNegative();

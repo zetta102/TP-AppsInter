@@ -2,7 +2,6 @@ package tp.appsinter.cine.controller;
 
 import lombok.extern.slf4j.Slf4j;
 import org.hibernate.exception.ConstraintViolationException;
-import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import jakarta.validation.ConstraintViolation;
 import lombok.RequiredArgsConstructor;
@@ -32,6 +31,7 @@ import tp.appsinter.cine.security.RefreshTokenReusedException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -119,8 +119,10 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     }
 
     /**
-     * Las escrituras concurrentes de stock pierden la comprobación de {@code @Version} al confirmar;
-     * el cliente sólo tiene que reintentar la petición.
+     * Las escrituras concurrentes de stock pierden la comprobación de {@code @Version} al confirmar.
+     * Las compras y cancelaciones ya se reintentan del lado del servidor ({@code @Retryable}), así que
+     * esto sólo llega cuando los reintentos se agotaron o la escritura no es reintentable (la edición
+     * completa de un producto); el cliente sólo tiene que repetir la petición.
      */
     @ExceptionHandler(OptimisticLockingFailureException.class)
     public ProblemDetail handleOptimisticLocking(OptimisticLockingFailureException exception) {
@@ -139,7 +141,8 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         if (violation == null) {
             return problem("The request conflicts with the current state of the resource", ErrorCode.CONFLICT);
         }
-        String constraint = violation.getConstraintName() == null ? "" : violation.getConstraintName().toLowerCase();
+        String constraintName = violation.getConstraintName();
+        String constraint = constraintName == null ? "" : constraintName.toLowerCase(Locale.ROOT);
         if (EXCLUSION_VIOLATION.equals(violation.getSQLState()) || constraint.equals(SCREENING_OVERLAP_CONSTRAINT)) {
             return problem("The room already has a screening overlapping that time", ErrorCode.SCREENING_OVERLAP);
         }
@@ -200,10 +203,10 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     }
 
     @Override
-    protected ResponseEntity<Object> handleMethodArgumentNotValid(@NonNull MethodArgumentNotValidException exception,
-                                                                  @NonNull HttpHeaders headers,
-                                                                  @NonNull HttpStatusCode status,
-                                                                  @NonNull WebRequest request) {
+    protected ResponseEntity<Object> handleMethodArgumentNotValid(MethodArgumentNotValidException exception,
+                                                                  HttpHeaders headers,
+                                                                  HttpStatusCode status,
+                                                                  WebRequest request) {
         ValidationErrors errors = new ValidationErrors();
         exception.getBindingResult().getFieldErrors().forEach(error -> errors.add(error.getField(), error, null));
         return validationProblem(errors);
@@ -215,10 +218,10 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
      */
     @Override
     protected ResponseEntity<Object> handleHandlerMethodValidationException(
-            @NonNull HandlerMethodValidationException exception,
-            @NonNull HttpHeaders headers,
-            @NonNull HttpStatusCode status,
-            @NonNull WebRequest request) {
+            HandlerMethodValidationException exception,
+            HttpHeaders headers,
+            HttpStatusCode status,
+            WebRequest request) {
         ValidationErrors errors = new ValidationErrors();
         for (ParameterValidationResult result : exception.getParameterValidationResults()) {
             String name = result.getMethodParameter().getParameterName();
@@ -234,9 +237,9 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
      */
     @Override
     protected ResponseEntity<Object> createResponseEntity(@Nullable Object body,
-                                                          @NonNull HttpHeaders headers,
-                                                          @NonNull HttpStatusCode statusCode,
-                                                          @NonNull WebRequest request) {
+                                                          HttpHeaders headers,
+                                                          HttpStatusCode statusCode,
+                                                          WebRequest request) {
         if (body instanceof ProblemDetail problem) {
             problems.decorate(problem, existingCode(problem).orElseGet(() -> codeFor(statusCode)));
         }
@@ -282,7 +285,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return problem;
     }
 
-    private ProblemDetail problem(String detail, ErrorCode code) {
+    private ProblemDetail problem(@Nullable String detail, ErrorCode code) {
         return problems.create(code, detail);
     }
 

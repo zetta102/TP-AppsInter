@@ -15,6 +15,8 @@
     <description>API de reservas de cine</description>
     <properties>
         <java.version>25</java.version>
+        <error-prone.version>2.50.0</error-prone.version>
+        <nullaway.version>0.14.2</nullaway.version>
     </properties>
     <dependencies>
         <dependency>
@@ -174,33 +176,36 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <annotationProcessorPaths>
+                        <path>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                        </path>
+                    </annotationProcessorPaths>
+                </configuration>
                 <executions>
+                    <!-- NullAway convierte @NullMarked/@Nullable en errores de compilación. Sólo revisa el
+                         código de producción; las pruebas no están marcadas. Error Prone corre dentro del
+                         javac de Maven y por eso necesita las exportaciones de jdk.compiler de .mvn/jvm.config. -->
                     <execution>
                         <id>default-compile</id>
-                        <phase>compile</phase>
-                        <goals>
-                            <goal>compile</goal>
-                        </goals>
                         <configuration>
-                            <annotationProcessorPaths>
+                            <compilerArgs combine.children="append">
+                                <arg>-XDcompilePolicy=simple</arg>
+                                <arg>--should-stop=ifError=FLOW</arg>
+                                <arg>-Xplugin:ErrorProne -XepDisableAllChecks -Xep:NullAway:ERROR -XepOpt:NullAway:OnlyNullMarked=true -XepOpt:NullAway:JSpecifyMode=true -XepOpt:NullAway:TreatGeneratedAsUnannotated=true</arg>
+                            </compilerArgs>
+                            <annotationProcessorPaths combine.children="append">
                                 <path>
-                                    <groupId>org.projectlombok</groupId>
-                                    <artifactId>lombok</artifactId>
+                                    <groupId>com.google.errorprone</groupId>
+                                    <artifactId>error_prone_core</artifactId>
+                                    <version>${error-prone.version}</version>
                                 </path>
-                            </annotationProcessorPaths>
-                        </configuration>
-                    </execution>
-                    <execution>
-                        <id>default-testCompile</id>
-                        <phase>test-compile</phase>
-                        <goals>
-                            <goal>testCompile</goal>
-                        </goals>
-                        <configuration>
-                            <annotationProcessorPaths>
                                 <path>
-                                    <groupId>org.projectlombok</groupId>
-                                    <artifactId>lombok</artifactId>
+                                    <groupId>com.uber.nullaway</groupId>
+                                    <artifactId>nullaway</artifactId>
+                                    <version>${nullaway.version}</version>
                                 </path>
                             </annotationProcessorPaths>
                         </configuration>

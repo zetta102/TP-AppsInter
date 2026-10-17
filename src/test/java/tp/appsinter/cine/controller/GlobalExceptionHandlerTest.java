@@ -4,7 +4,9 @@ import org.hibernate.exception.ConstraintViolationException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.FieldSource;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.ProblemDetail;
 import tp.appsinter.cine.exception.BusinessRuleException;
@@ -18,36 +20,38 @@ import java.sql.SQLException;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.params.provider.Arguments.argumentSet;
 
 @DisplayName("Problem detail mapping")
 class GlobalExceptionHandlerTest {
 
+    /**
+     * Una muestra de cada familia de error de dominio; cada una se informa como un caso propio.
+     */
+    static final List<Arguments> DOMAIN_ERRORS = List.of(
+            argumentSet("not found", NotFoundException.of("Movie", UUID.randomUUID())),
+            argumentSet("email taken", ConflictException.emailTaken("a@b.c")),
+            argumentSet("already cancelled", BusinessRuleException.alreadyCancelled(UUID.randomUUID())),
+            argumentSet("empty adjustment", BusinessRuleException.emptyAdjustment()),
+            argumentSet("empty layout", BusinessRuleException.emptyLayout()),
+            argumentSet("wrong password", BusinessRuleException.wrongPassword()),
+            argumentSet("generic business rule", new BusinessRuleException("generic")));
+
     private final GlobalExceptionHandler handler = new GlobalExceptionHandler(new ProblemFactory(ProblemFactory.DEFAULT_TYPE_BASE));
 
-    @Test
+    @ParameterizedTest
+    @FieldSource("DOMAIN_ERRORS")
     @DisplayName("publishes every domain error with the status registered for its code")
-    void statusComesFromErrorCode() {
-        Stream.<DomainException>of(
-                        NotFoundException.of("Movie", UUID.randomUUID()),
-                        ConflictException.emailTaken("a@b.c"),
-                        BusinessRuleException.alreadyCancelled(UUID.randomUUID()),
-                        BusinessRuleException.emptyAdjustment(),
-                        BusinessRuleException.emptyLayout(),
-                        BusinessRuleException.wrongPassword(),
-                        new BusinessRuleException("generic"))
-                .forEach(exception -> {
-                    ProblemDetail problem = handler.handleDomain(exception);
-                    assertThat(problem.getStatus())
-                            .as(exception.getCode().name())
-                            .isEqualTo(exception.getCode().status().value());
-                    assertThat(problem.getProperties()).containsEntry("code", exception.getCode().name());
-                    assertThat(problem.getType().toString())
-                            .startsWith(ProblemFactory.DEFAULT_TYPE_BASE)
-                            .endsWith(exception.getCode().name().toLowerCase().replace('_', '-'));
-                });
+    void statusComesFromErrorCode(DomainException exception) {
+        ProblemDetail problem = handler.handleDomain(exception);
+
+        assertThat(problem.getStatus()).isEqualTo(exception.getCode().status().value());
+        assertThat(problem.getProperties()).containsEntry("code", exception.getCode().name());
+        assertThat(problem.getType().toString())
+                .startsWith(ProblemFactory.DEFAULT_TYPE_BASE)
+                .endsWith(exception.getCode().name().toLowerCase().replace('_', '-'));
     }
 
     @Test
@@ -75,12 +79,12 @@ class GlobalExceptionHandlerTest {
     }
 
     @ParameterizedTest(name = "{0} / {1} → {3}")
-    @CsvSource({
-            "23503, fk_movie_screening_movie,          FOREIGN_KEY, RESOURCE_IN_USE",
-            "23505, uk_app_user_email_lower,           UNIQUE,      EMAIL_TAKEN",
-            "23P01, ex_movie_screening_room_overlap,   OTHER,       SCREENING_OVERLAP",
-            "23505, uk_screen_room_name,               UNIQUE,      CONFLICT"
-    })
+    @CsvSource(textBlock = """
+            23503, fk_movie_screening_movie,          FOREIGN_KEY, RESOURCE_IN_USE
+            23505, uk_app_user_email_lower,           UNIQUE,      EMAIL_TAKEN
+            23P01, ex_movie_screening_room_overlap,   OTHER,       SCREENING_OVERLAP
+            23505, uk_screen_room_name,               UNIQUE,      CONFLICT
+            """)
     @DisplayName("translates database constraint violations to the documented codes")
     void translatesConstraintViolations(String sqlState,
                                         String constraint,

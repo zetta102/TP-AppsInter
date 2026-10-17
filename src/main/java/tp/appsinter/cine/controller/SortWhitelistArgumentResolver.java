@@ -10,6 +10,7 @@ import org.springframework.web.method.support.HandlerMethodArgumentResolver;
 import org.springframework.web.method.support.ModelAndViewContainer;
 
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -47,7 +48,7 @@ final class SortWhitelistArgumentResolver implements HandlerMethodArgumentResolv
                                     @Nullable WebDataBinderFactory binderFactory) {
         Pageable pageable = delegate.resolveArgument(parameter, mavContainer, webRequest, binderFactory);
         SortWhitelist whitelist = whitelists.computeIfAbsent(parameter,
-                key -> whitelistOf(key.getParameterAnnotation(AllowedSort.class)));
+                key -> whitelistOf(Objects.requireNonNull(key.getParameterAnnotation(AllowedSort.class))));
         return whitelist.apply(pageable);
     }
 }

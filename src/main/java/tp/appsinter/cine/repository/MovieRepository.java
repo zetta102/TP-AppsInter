@@ -1,5 +1,6 @@
 package tp.appsinter.cine.repository;
 
+import org.jspecify.annotations.Nullable;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -33,9 +34,9 @@ public interface MovieRepository extends JpaRepository<Movie, UUID> {
               and (:releaseYear is null or m.releaseYear = :releaseYear)
               and (:includeArchived = true or m.archivedAt is null)
             """)
-    Page<Movie> search(@Param("search") String search,
-                       @Param("genres") Collection<MovieGenre> genres,
-                       @Param("releaseYear") Integer releaseYear,
+    Page<Movie> search(@Param("search") @Nullable String search,
+                       @Param("genres") @Nullable Collection<MovieGenre> genres,
+                       @Param("releaseYear") @Nullable Integer releaseYear,
                        @Param("includeArchived") boolean includeArchived,
                        Pageable pageable);
 
@@ -56,6 +57,6 @@ public interface MovieRepository extends JpaRepository<Movie, UUID> {
                             and s.startsAt <= coalesce(:to, s.startsAt))
             """)
     Page<Movie> findNowShowing(@Param("from") OffsetDateTime from,
-                               @Param("to") OffsetDateTime to,
+                               @Param("to") @Nullable OffsetDateTime to,
                                Pageable pageable);
 }

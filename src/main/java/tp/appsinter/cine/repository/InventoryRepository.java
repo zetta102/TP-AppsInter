@@ -1,5 +1,6 @@
 package tp.appsinter.cine.repository;
 
+import org.jspecify.annotations.Nullable;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -30,8 +31,8 @@ public interface InventoryRepository extends JpaRepository<Inventory, UUID> {
               and (:term is null or lower(i.productName) like lower(concat('%', cast(:term as String), '%')))
               and (:includeArchived = true or i.archivedAt is null)
             """)
-    Page<Inventory> search(@Param("category") ProductCategory category,
-                           @Param("term") String term,
+    Page<Inventory> search(@Param("category") @Nullable ProductCategory category,
+                           @Param("term") @Nullable String term,
                            @Param("includeArchived") boolean includeArchived,
                            Pageable pageable);
 

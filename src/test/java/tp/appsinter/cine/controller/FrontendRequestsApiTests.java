@@ -1,6 +1,5 @@
 package tp.appsinter.cine.controller;
 
-import com.jayway.jsonpath.JsonPath;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -10,11 +9,11 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.MvcResult;
-import org.springframework.test.web.servlet.ResultActions;
+import org.springframework.test.web.servlet.assertj.MockMvcTester;
+import org.springframework.test.web.servlet.assertj.MvcTestResult;
 import tp.appsinter.cine.DatabaseCleaner;
 import tp.appsinter.cine.PostgresTestcontainersConfiguration;
 import tp.appsinter.cine.model.dto.request.CreateUserRequestDTO;
@@ -49,16 +48,6 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
-import static org.hamcrest.Matchers.contains;
-import static org.hamcrest.Matchers.hasItem;
-import static org.hamcrest.Matchers.not;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.request;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
  * Cobertura de los pedidos del frontend ({@code docs/frontend-status-for-backend.md} §8), cada uno
@@ -79,7 +68,7 @@ class FrontendRequestsApiTests {
     @Autowired
     private JdbcTemplate jdbcTemplate;
     @Autowired
-    private MockMvc mockMvc;
+    private MockMvcTester mvc;
     @Autowired
     private UserService userService;
     @Autowired
@@ -150,15 +139,17 @@ class FrontendRequestsApiTests {
                 .build());
     }
 
-    private String bearer(String email) throws Exception {
-        String body = mockMvc.perform(post("/api/auth/login")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"email\":\"%s\",\"password\":\"%s\"}".formatted(email, PASSWORD)))
-                .andExpect(status().isOk())
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
-        return "Bearer " + JsonPath.read(body, "$.token");
+    private static String read(MvcTestResult result, String path) {
+        return assertThat(result).bodyJson().extractingPath(path).asString().actual();
+    }
+
+    private String bearer(String email) {
+        MvcTestResult login = mvc.post().uri("/api/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"email\":\"%s\",\"password\":\"%s\"}".formatted(email, PASSWORD))
+                .exchange();
+        assertThat(login).hasStatusOk();
+        return "Bearer " + read(login, "$.token");
     }
 
     private static String seatIds(Seat... seats) {
@@ -166,65 +157,64 @@ class FrontendRequestsApiTests {
                 Arrays.stream(seats).map(seat -> "\"" + seat.getUuid() + "\"").toList()));
     }
 
-    private ResultActions hold(String token, MovieScreening target, Seat... seats) throws Exception {
-        return mockMvc.perform(post("/api/screenings/{id}/holds", target.getUuid())
+    private MockMvcTester.MockMvcRequestBuilder hold(String token, MovieScreening target, Seat... seats) {
+        return mvc.post().uri("/api/screenings/{id}/holds", target.getUuid())
                 .header(HttpHeaders.AUTHORIZATION, token)
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(seatIds(seats)));
+                .content(seatIds(seats));
     }
 
-    private String book(String token, Seat... seats) throws Exception {
-        String body = mockMvc.perform(post("/api/reservations")
-                        .header(HttpHeaders.AUTHORIZATION, token)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {"movieScreeningId":"%s","seatIds":%s}
-                                """.formatted(screening.getUuid(),
-                                seatIds(seats).replace("{\"seatIds\":", "").replace("]}", "]"))))
-                .andExpect(status().isCreated())
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
-        return JsonPath.read(body, "$.uuid");
-    }
-
-    private ResultActions archive(String token, String resource, UUID id, boolean archived) throws Exception {
-        return mockMvc.perform(patch("/api/{resource}/{id}", resource, id)
+    private String book(String token, Seat... seats) {
+        MvcTestResult booked = mvc.post().uri("/api/reservations")
                 .header(HttpHeaders.AUTHORIZATION, token)
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"archived\":%s}".formatted(archived)));
+                .content("""
+                        {"movieScreeningId":"%s","seatIds":%s}
+                        """.formatted(screening.getUuid(),
+                        seatIds(seats).replace("{\"seatIds\":", "").replace("]}", "]")))
+                .exchange();
+        assertThat(booked).hasStatus(HttpStatus.CREATED);
+        return read(booked, "$.uuid");
+    }
+
+    private MockMvcTester.MockMvcRequestBuilder archive(String token, String resource, UUID id, boolean archived) {
+        return mvc.patch().uri("/api/{resource}/{id}", resource, id)
+                .header(HttpHeaders.AUTHORIZATION, token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"archived\":%s}".formatted(archived));
     }
 
     @Nested
     @DisplayName("B2 movie URL validation")
     class UrlValidation {
 
-        private ResultActions createMovie(String posterUrl) throws Exception {
-            return mockMvc.perform(post("/api/movies")
+        private MockMvcTester.MockMvcRequestBuilder createMovie(String posterUrl) {
+            return mvc.post().uri("/api/movies")
                     .header(HttpHeaders.AUTHORIZATION, bearer(ADMIN_EMAIL))
                     .contentType(MediaType.APPLICATION_JSON)
                     .content("""
                             {"movieName":"Dune","genres":["SCI_FI"],"runtime":155,"posterUrl":"%s"}
-                            """.formatted(posterUrl)));
+                            """.formatted(posterUrl));
         }
 
         @Test
         @DisplayName("rejects a URL that only looks absolute")
-        void rejectsGarbage() throws Exception {
-            createMovie("https://KXEb3yzz0D5lXYdk;[#`E(G@")
-                    .andExpect(status().isBadRequest())
-                    .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
-                    .andExpect(jsonPath("$.errors.posterUrl").exists())
-                    .andExpect(jsonPath("$.violations[0].field").value("posterUrl"))
-                    .andExpect(jsonPath("$.violations[0].code").value("HttpUrl"));
+        void rejectsGarbage() {
+            assertThat(createMovie("https://KXEb3yzz0D5lXYdk;[#`E(G@"))
+                    .hasStatus(HttpStatus.BAD_REQUEST)
+                    .bodyJson()
+                    .hasPathSatisfying("$.code", code -> assertThat(code).isEqualTo("VALIDATION_FAILED"))
+                    .hasPath("$.errors.posterUrl")
+                    .hasPathSatisfying("$.violations[0].field", field -> assertThat(field).isEqualTo("posterUrl"))
+                    .hasPathSatisfying("$.violations[0].code", code -> assertThat(code).isEqualTo("HttpUrl"));
         }
 
         @Test
         @DisplayName("accepts a real image URL")
-        void acceptsRealUrl() throws Exception {
-            createMovie("https://image.tmdb.org/t/p/w500/x.jpg")
-                    .andExpect(status().isCreated())
-                    .andExpect(jsonPath("$.posterUrl").value("https://image.tmdb.org/t/p/w500/x.jpg"));
+        void acceptsRealUrl() {
+            assertThat(createMovie("https://image.tmdb.org/t/p/w500/x.jpg"))
+                    .hasStatus(HttpStatus.CREATED)
+                    .bodyJson().extractingPath("$.posterUrl").isEqualTo("https://image.tmdb.org/t/p/w500/x.jpg");
         }
     }
 
@@ -234,43 +224,44 @@ class FrontendRequestsApiTests {
 
         @Test
         @DisplayName("publishes machine-readable violations with constraint parameters")
-        void violations() throws Exception {
-            mockMvc.perform(post("/api/auth/register")
+        void violations() {
+            assertThat(mvc.post().uri("/api/auth/register")
                             .contentType(MediaType.APPLICATION_JSON)
                             .content("""
                                     {"firstName":"Grace","lastName":"Hopper","email":"grace@example.com","password":"abc"}
                                     """))
-                    .andExpect(status().isBadRequest())
-                    .andExpect(jsonPath("$.type").value(PROBLEMS + "validation-failed"))
-                    .andExpect(jsonPath("$.errors.password").exists())
-                    .andExpect(jsonPath("$.violations[0].field").value("password"))
-                    .andExpect(jsonPath("$.violations[0].code").value("Size"))
-                    .andExpect(jsonPath("$.violations[0].params.min").value(8))
-                    .andExpect(jsonPath("$.violations[0].params.max").value(72));
+                    .hasStatus(HttpStatus.BAD_REQUEST)
+                    .bodyJson()
+                    .hasPathSatisfying("$.type", type -> assertThat(type).isEqualTo(PROBLEMS + "validation-failed"))
+                    .hasPath("$.errors.password")
+                    .hasPathSatisfying("$.violations[0].field", field -> assertThat(field).isEqualTo("password"))
+                    .hasPathSatisfying("$.violations[0].code", code -> assertThat(code).isEqualTo("Size"))
+                    .hasPathSatisfying("$.violations[0].params.min", min -> assertThat(min).isEqualTo(8))
+                    .hasPathSatisfying("$.violations[0].params.max", max -> assertThat(max).isEqualTo(72));
         }
 
         @Test
         @DisplayName("reports a binding failure with its own code")
-        void typeMismatch() throws Exception {
-            mockMvc.perform(get("/api/screenings").param("from", "yesterday"))
-                    .andExpect(status().isBadRequest())
-                    .andExpect(jsonPath("$.type").isNotEmpty());
+        void typeMismatch() {
+            assertThat(mvc.get().uri("/api/screenings").param("from", "yesterday"))
+                    .hasStatus(HttpStatus.BAD_REQUEST)
+                    .bodyJson().extractingPath("$.type").isNotEmpty();
         }
 
         @Test
         @DisplayName("sets a stable type on domain, framework and security errors")
-        void typeEverywhere() throws Exception {
-            mockMvc.perform(get("/api/screenings/{id}", UUID.randomUUID()))
-                    .andExpect(status().isNotFound())
-                    .andExpect(jsonPath("$.type").value(PROBLEMS + "not-found"));
-            mockMvc.perform(get("/api/reservations"))
-                    .andExpect(status().isUnauthorized())
-                    .andExpect(jsonPath("$.type").value(PROBLEMS + "invalid-credentials"));
-            mockMvc.perform(get("/api/users").header(HttpHeaders.AUTHORIZATION, bearer(CUSTOMER_EMAIL)))
-                    .andExpect(status().isForbidden())
-                    .andExpect(jsonPath("$.type").value(PROBLEMS + "forbidden"));
-            mockMvc.perform(post("/api/metadata/config"))
-                    .andExpect(jsonPath("$.type").isNotEmpty());
+        void typeEverywhere() {
+            assertThat(mvc.get().uri("/api/screenings/{id}", UUID.randomUUID()))
+                    .hasStatus(HttpStatus.NOT_FOUND)
+                    .bodyJson().extractingPath("$.type").isEqualTo(PROBLEMS + "not-found");
+            assertThat(mvc.get().uri("/api/reservations"))
+                    .hasStatus(HttpStatus.UNAUTHORIZED)
+                    .bodyJson().extractingPath("$.type").isEqualTo(PROBLEMS + "invalid-credentials");
+            assertThat(mvc.get().uri("/api/users").header(HttpHeaders.AUTHORIZATION, bearer(CUSTOMER_EMAIL)))
+                    .hasStatus(HttpStatus.FORBIDDEN)
+                    .bodyJson().extractingPath("$.type").isEqualTo(PROBLEMS + "forbidden");
+            assertThat(mvc.post().uri("/api/metadata/config"))
+                    .bodyJson().extractingPath("$.type").isNotEmpty();
         }
     }
 
@@ -280,123 +271,128 @@ class FrontendRequestsApiTests {
 
         @Test
         @DisplayName("archives a screening whose tickets were all cancelled, keeping its reservations")
-        void archivesCancelledScreening() throws Exception {
+        void archivesCancelledScreening() {
             String customer = bearer(CUSTOMER_EMAIL);
             String admin = bearer(ADMIN_EMAIL);
             String reservation = book(customer, seatA1);
-            mockMvc.perform(post("/api/reservations/{id}/cancellation", reservation)
+            assertThat(mvc.post().uri("/api/reservations/{id}/cancellation", reservation)
                             .header(HttpHeaders.AUTHORIZATION, customer))
-                    .andExpect(status().isOk());
+                    .hasStatusOk();
 
-            archive(admin, "screenings", screening.getUuid(), true)
-                    .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.archived").value(true));
+            assertThat(archive(admin, "screenings", screening.getUuid(), true))
+                    .hasStatusOk()
+                    .bodyJson().extractingPath("$.archived").isEqualTo(true);
 
-            mockMvc.perform(get("/api/screenings"))
-                    .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.content[*].uuid", not(hasItem(screening.getUuid().toString()))));
-            mockMvc.perform(get("/api/screenings").param("includeArchived", "true"))
-                    .andExpect(jsonPath("$.content[*].uuid", hasItem(screening.getUuid().toString())));
-            mockMvc.perform(get("/api/screenings/{id}", screening.getUuid()))
-                    .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.archived").value(true));
-            mockMvc.perform(get("/api/reservations/{id}", reservation).header(HttpHeaders.AUTHORIZATION, customer))
-                    .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.movieScreeningId").value(screening.getUuid().toString()));
+            assertThat(mvc.get().uri("/api/screenings"))
+                    .hasStatusOk()
+                    .bodyJson().extractingPath("$.content[*].uuid").asArray()
+                    .doesNotContain(screening.getUuid().toString());
+            assertThat(mvc.get().uri("/api/screenings").param("includeArchived", "true"))
+                    .bodyJson().extractingPath("$.content[*].uuid").asArray()
+                    .contains(screening.getUuid().toString());
+            assertThat(mvc.get().uri("/api/screenings/{id}", screening.getUuid()))
+                    .hasStatusOk()
+                    .bodyJson().extractingPath("$.archived").isEqualTo(true);
+            assertThat(mvc.get().uri("/api/reservations/{id}", reservation).header(HttpHeaders.AUTHORIZATION, customer))
+                    .hasStatusOk()
+                    .bodyJson().extractingPath("$.movieScreeningId").isEqualTo(screening.getUuid().toString());
         }
 
         @Test
         @DisplayName("refuses to archive an upcoming screening with active tickets")
-        void refusesSoldScreening() throws Exception {
+        void refusesSoldScreening() {
             book(bearer(CUSTOMER_EMAIL), seatA1);
-            archive(bearer(ADMIN_EMAIL), "screenings", screening.getUuid(), true)
-                    .andExpect(status().isConflict())
-                    .andExpect(jsonPath("$.code").value("RESOURCE_IN_USE"));
+            assertThat(archive(bearer(ADMIN_EMAIL), "screenings", screening.getUuid(), true))
+                    .hasStatus(HttpStatus.CONFLICT)
+                    .bodyJson().extractingPath("$.code").isEqualTo("RESOURCE_IN_USE");
         }
 
         @Test
         @DisplayName("rejects holds, quotes and bookings on an archived screening")
-        void archivedScreeningIsClosed() throws Exception {
-            archive(bearer(ADMIN_EMAIL), "screenings", screening.getUuid(), true).andExpect(status().isOk());
+        void archivedScreeningIsClosed() {
+            assertThat(archive(bearer(ADMIN_EMAIL), "screenings", screening.getUuid(), true)).hasStatusOk();
             String customer = bearer(CUSTOMER_EMAIL);
 
-            hold(customer, screening, seatA1)
-                    .andExpect(status().isUnprocessableContent())
-                    .andExpect(jsonPath("$.code").value("RESOURCE_ARCHIVED"))
-                    .andExpect(jsonPath("$.context.resource").value("Movie screening"));
-            mockMvc.perform(post("/api/reservations:quote")
+            assertThat(hold(customer, screening, seatA1))
+                    .hasStatus(HttpStatus.UNPROCESSABLE_CONTENT)
+                    .bodyJson()
+                    .hasPathSatisfying("$.code", code -> assertThat(code).isEqualTo("RESOURCE_ARCHIVED"))
+                    .hasPathSatisfying("$.context.resource", resource -> assertThat(resource).isEqualTo("Movie screening"));
+            assertThat(mvc.post().uri("/api/reservations:quote")
                             .header(HttpHeaders.AUTHORIZATION, customer)
                             .contentType(MediaType.APPLICATION_JSON)
                             .content("{\"movieScreeningId\":\"%s\",\"seatIds\":[\"%s\"]}"
                                     .formatted(screening.getUuid(), seatA1.getUuid())))
-                    .andExpect(jsonPath("$.code").value("RESOURCE_ARCHIVED"));
+                    .bodyJson().extractingPath("$.code").isEqualTo("RESOURCE_ARCHIVED");
         }
 
         @Test
         @DisplayName("frees the slot of an archived screening and checks it again on restore")
-        void archivingFreesTheSlot() throws Exception {
+        void archivingFreesTheSlot() {
             String admin = bearer(ADMIN_EMAIL);
-            archive(admin, "screenings", screening.getUuid(), true).andExpect(status().isOk());
-            mockMvc.perform(post("/api/screenings")
+            assertThat(archive(admin, "screenings", screening.getUuid(), true)).hasStatusOk();
+            assertThat(mvc.post().uri("/api/screenings")
                             .header(HttpHeaders.AUTHORIZATION, admin)
                             .contentType(MediaType.APPLICATION_JSON)
                             .content("""
                                     {"movieId":"%s","screenRoomId":"%s","startsAt":"%s","basePrice":12.00}
                                     """.formatted(movie.getUuid(), room.getUuid(), screening.getStartsAt())))
-                    .andExpect(status().isCreated());
+                    .hasStatus(HttpStatus.CREATED);
 
-            archive(admin, "screenings", screening.getUuid(), false)
-                    .andExpect(status().isConflict())
-                    .andExpect(jsonPath("$.code").value("SCREENING_OVERLAP"));
+            assertThat(archive(admin, "screenings", screening.getUuid(), false))
+                    .hasStatus(HttpStatus.CONFLICT)
+                    .bodyJson().extractingPath("$.code").isEqualTo("SCREENING_OVERLAP");
         }
 
         @Test
         @DisplayName("archives a movie only when it has no upcoming screenings")
-        void archivesMovie() throws Exception {
+        void archivesMovie() {
             String admin = bearer(ADMIN_EMAIL);
-            archive(admin, "movies", movie.getUuid(), true)
-                    .andExpect(status().isConflict())
-                    .andExpect(jsonPath("$.code").value("RESOURCE_IN_USE"));
+            assertThat(archive(admin, "movies", movie.getUuid(), true))
+                    .hasStatus(HttpStatus.CONFLICT)
+                    .bodyJson().extractingPath("$.code").isEqualTo("RESOURCE_IN_USE");
 
-            archive(admin, "screenings", screening.getUuid(), true).andExpect(status().isOk());
-            archive(admin, "movies", movie.getUuid(), true)
-                    .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.archived").value(true));
-            mockMvc.perform(get("/api/movies"))
-                    .andExpect(jsonPath("$.totalElements").value(0));
-            mockMvc.perform(get("/api/movies").param("includeArchived", "true"))
-                    .andExpect(jsonPath("$.totalElements").value(1));
-            mockMvc.perform(post("/api/screenings")
+            assertThat(archive(admin, "screenings", screening.getUuid(), true)).hasStatusOk();
+            assertThat(archive(admin, "movies", movie.getUuid(), true))
+                    .hasStatusOk()
+                    .bodyJson().extractingPath("$.archived").isEqualTo(true);
+            assertThat(mvc.get().uri("/api/movies"))
+                    .bodyJson().extractingPath("$.totalElements").isEqualTo(0);
+            assertThat(mvc.get().uri("/api/movies").param("includeArchived", "true"))
+                    .bodyJson().extractingPath("$.totalElements").isEqualTo(1);
+            assertThat(mvc.post().uri("/api/screenings")
                             .header(HttpHeaders.AUTHORIZATION, admin)
                             .contentType(MediaType.APPLICATION_JSON)
                             .content("""
                                     {"movieId":"%s","screenRoomId":"%s","startsAt":"%s","basePrice":12.00}
                                     """.formatted(movie.getUuid(), room.getUuid(), OffsetDateTime.now().plusDays(9))))
-                    .andExpect(status().isUnprocessableContent())
-                    .andExpect(jsonPath("$.code").value("RESOURCE_ARCHIVED"));
+                    .hasStatus(HttpStatus.UNPROCESSABLE_CONTENT)
+                    .bodyJson().extractingPath("$.code").isEqualTo("RESOURCE_ARCHIVED");
         }
 
         @Test
         @DisplayName("hides an archived product from the menu and refuses to sell it")
-        void archivesProduct() throws Exception {
+        void archivesProduct() {
             String admin = bearer(ADMIN_EMAIL);
-            archive(admin, "inventory", popcorn.getUuid(), true)
-                    .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.archived").value(true));
+            assertThat(archive(admin, "inventory", popcorn.getUuid(), true))
+                    .hasStatusOk()
+                    .bodyJson().extractingPath("$.archived").isEqualTo(true);
 
-            mockMvc.perform(get("/api/products")).andExpect(jsonPath("$.totalElements").value(0));
-            mockMvc.perform(get("/api/inventory").header(HttpHeaders.AUTHORIZATION, admin))
-                    .andExpect(jsonPath("$.totalElements").value(0));
-            mockMvc.perform(get("/api/inventory").param("includeArchived", "true").header(HttpHeaders.AUTHORIZATION, admin))
-                    .andExpect(jsonPath("$.totalElements").value(1));
-            mockMvc.perform(post("/api/reservations")
+            assertThat(mvc.get().uri("/api/products"))
+                    .bodyJson().extractingPath("$.totalElements").isEqualTo(0);
+            assertThat(mvc.get().uri("/api/inventory").header(HttpHeaders.AUTHORIZATION, admin))
+                    .bodyJson().extractingPath("$.totalElements").isEqualTo(0);
+            assertThat(mvc.get().uri("/api/inventory").param("includeArchived", "true")
+                            .header(HttpHeaders.AUTHORIZATION, admin))
+                    .bodyJson().extractingPath("$.totalElements").isEqualTo(1);
+            assertThat(mvc.post().uri("/api/reservations")
                             .header(HttpHeaders.AUTHORIZATION, bearer(CUSTOMER_EMAIL))
                             .contentType(MediaType.APPLICATION_JSON)
                             .content("""
                                     {"movieScreeningId":"%s","seatIds":["%s"],"products":[{"inventoryId":"%s","quantity":1}]}
                                     """.formatted(screening.getUuid(), seatA1.getUuid(), popcorn.getUuid())))
-                    .andExpect(status().isUnprocessableContent())
-                    .andExpect(jsonPath("$.code").value("RESOURCE_ARCHIVED"));
+                    .hasStatus(HttpStatus.UNPROCESSABLE_CONTENT)
+                    .bodyJson().extractingPath("$.code").isEqualTo("RESOURCE_ARCHIVED");
         }
     }
 
@@ -404,53 +400,53 @@ class FrontendRequestsApiTests {
     @DisplayName("B7 atomic hold replacement")
     class HoldReplacement {
 
-        private ResultActions replace(String token, String holdId, Seat... seats) throws Exception {
-            return mockMvc.perform(put("/api/holds/{id}", holdId)
+        private MockMvcTester.MockMvcRequestBuilder replace(String token, String holdId, Seat... seats) {
+            return mvc.put().uri("/api/holds/{id}", holdId)
                     .header(HttpHeaders.AUTHORIZATION, token)
                     .contentType(MediaType.APPLICATION_JSON)
-                    .content(seatIds(seats)));
+                    .content(seatIds(seats));
         }
 
         @Test
         @DisplayName("swaps the seat set in place and keeps the expiry")
-        void replacesKeepingExpiry() throws Exception {
+        void replacesKeepingExpiry() {
             String customer = bearer(CUSTOMER_EMAIL);
-            String created = hold(customer, screening, seatA1).andExpect(status().isCreated())
-                    .andReturn().getResponse().getContentAsString();
-            String holdId = JsonPath.read(created, "$.uuid");
+            MvcTestResult created = hold(customer, screening, seatA1).exchange();
+            assertThat(created).hasStatus(HttpStatus.CREATED);
+            String holdId = read(created, "$.uuid");
 
-            String replaced = replace(customer, holdId, seatA1, seatA2)
-                    .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.uuid").value(holdId))
-                    .andExpect(jsonPath("$.seatIds.length()").value(2))
-                    .andReturn().getResponse().getContentAsString();
+            MvcTestResult replaced = replace(customer, holdId, seatA1, seatA2).exchange();
+            assertThat(replaced)
+                    .hasStatusOk()
+                    .bodyJson()
+                    .hasPathSatisfying("$.uuid", uuid -> assertThat(uuid).isEqualTo(holdId))
+                    .hasPathSatisfying("$.seatIds", ids -> assertThat(ids).asArray().hasSize(2));
             // El alta responde con la hora en memoria (nanosegundos) y el reemplazo con la guardada
             // (microsegundos): se comparan al milisegundo.
-            assertThat(OffsetDateTime.parse(JsonPath.<String>read(replaced, "$.expiresAt")).truncatedTo(ChronoUnit.MILLIS))
-                    .isAtSameInstantAs(OffsetDateTime.parse(JsonPath.<String>read(created, "$.expiresAt"))
+            assertThat(OffsetDateTime.parse(read(replaced, "$.expiresAt")).truncatedTo(ChronoUnit.MILLIS))
+                    .isAtSameInstantAs(OffsetDateTime.parse(read(created, "$.expiresAt"))
                             .truncatedTo(ChronoUnit.MILLIS));
 
-            hold(bearer(OTHER_EMAIL), screening, seatA2)
-                    .andExpect(status().isConflict())
-                    .andExpect(jsonPath("$.code").value("SEATS_UNAVAILABLE"));
+            assertThat(hold(bearer(OTHER_EMAIL), screening, seatA2))
+                    .hasStatus(HttpStatus.CONFLICT)
+                    .bodyJson().extractingPath("$.code").isEqualTo("SEATS_UNAVAILABLE");
 
-            replace(customer, holdId, seatA3).andExpect(status().isOk());
-            hold(bearer(OTHER_EMAIL), screening, seatA1, seatA2).andExpect(status().isCreated());
+            assertThat(replace(customer, holdId, seatA3)).hasStatusOk();
+            assertThat(hold(bearer(OTHER_EMAIL), screening, seatA1, seatA2)).hasStatus(HttpStatus.CREATED);
         }
 
         @Test
         @DisplayName("fails like a new hold on sold seats, and 404s on someone else's hold")
-        void sameErrorsAsCreate() throws Exception {
+        void sameErrorsAsCreate() {
             String customer = bearer(CUSTOMER_EMAIL);
-            String holdId = JsonPath.read(hold(customer, screening, seatA1).andReturn().getResponse().getContentAsString(),
-                    "$.uuid");
+            String holdId = read(hold(customer, screening, seatA1).exchange(), "$.uuid");
             book(bearer(OTHER_EMAIL), seatA2);
 
-            replace(customer, holdId, seatA1, seatA2)
-                    .andExpect(status().isConflict())
-                    .andExpect(jsonPath("$.code").value("SEATS_UNAVAILABLE"));
-            replace(bearer(OTHER_EMAIL), holdId, seatA3)
-                    .andExpect(status().isNotFound());
+            assertThat(replace(customer, holdId, seatA1, seatA2))
+                    .hasStatus(HttpStatus.CONFLICT)
+                    .bodyJson().extractingPath("$.code").isEqualTo("SEATS_UNAVAILABLE");
+            assertThat(replace(bearer(OTHER_EMAIL), holdId, seatA3))
+                    .hasStatus(HttpStatus.NOT_FOUND);
         }
     }
 
@@ -460,15 +456,17 @@ class FrontendRequestsApiTests {
 
         @Test
         @DisplayName("pushes a seats event to an anonymous subscriber when someone holds a seat")
-        void pushesHoldEvents() throws Exception {
-            MvcResult stream = mockMvc.perform(get("/api/screenings/{id}/seats/stream", screening.getUuid())
-                            .accept(MediaType.TEXT_EVENT_STREAM))
-                    .andExpect(request().asyncStarted())
-                    .andReturn();
+        void pushesHoldEvents() {
+            // El canal no termina nunca: asyncExchange no espera el resultado asíncrono, que es lo
+            // que haría exchange.
+            MvcTestResult stream = mvc.get().uri("/api/screenings/{id}/seats/stream", screening.getUuid())
+                    .accept(MediaType.TEXT_EVENT_STREAM)
+                    .asyncExchange();
+            assertThat(stream).request().hasAsyncStarted(true);
             await().atMost(Duration.ofSeconds(2))
                     .until(() -> seatStreamService.subscriberCount(screening.getUuid()) == 1);
 
-            hold(bearer(CUSTOMER_EMAIL), screening, seatA1).andExpect(status().isCreated());
+            assertThat(hold(bearer(CUSTOMER_EMAIL), screening, seatA1)).hasStatus(HttpStatus.CREATED);
 
             await().atMost(Duration.ofSeconds(2)).untilAsserted(() -> {
                 String body = stream.getResponse().getContentAsString(StandardCharsets.UTF_8);
@@ -481,10 +479,10 @@ class FrontendRequestsApiTests {
 
         @Test
         @DisplayName("answers 404 before opening a stream for an unknown screening")
-        void unknownScreening() throws Exception {
-            mockMvc.perform(get("/api/screenings/{id}/seats/stream", UUID.randomUUID())
+        void unknownScreening() {
+            assertThat(mvc.get().uri("/api/screenings/{id}/seats/stream", UUID.randomUUID())
                             .accept(MediaType.TEXT_EVENT_STREAM))
-                    .andExpect(status().isNotFound());
+                    .hasStatus(HttpStatus.NOT_FOUND);
         }
     }
 
@@ -494,7 +492,7 @@ class FrontendRequestsApiTests {
 
         @Test
         @DisplayName("groups upcoming screenings by movie in chronological order")
-        void aggregates() throws Exception {
+        void aggregates() {
             MovieScreening earlier = screeningAt(OffsetDateTime.now().plusDays(1));
             movieRepository.save(Movie.builder()
                     .movieName("Unscheduled")
@@ -502,17 +500,19 @@ class FrontendRequestsApiTests {
                     .runtime(90)
                     .build());
 
-            mockMvc.perform(get("/api/movies/now-showing"))
-                    .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.totalElements").value(1))
-                    .andExpect(jsonPath("$.content[0].movie.movieName").value("Arrival"))
-                    .andExpect(jsonPath("$.content[0].screenings[*].uuid",
-                            contains(earlier.getUuid().toString(), screening.getUuid().toString())))
-                    .andExpect(jsonPath("$.content[0].screenings[0].availableSeats").value(3));
+            assertThat(mvc.get().uri("/api/movies/now-showing"))
+                    .hasStatusOk()
+                    .bodyJson()
+                    .hasPathSatisfying("$.totalElements", total -> assertThat(total).isEqualTo(1))
+                    .hasPathSatisfying("$.content[0].movie.movieName", name -> assertThat(name).isEqualTo("Arrival"))
+                    .hasPathSatisfying("$.content[0].screenings[*].uuid", ids -> assertThat(ids).asArray()
+                            .containsExactly(earlier.getUuid().toString(), screening.getUuid().toString()))
+                    .hasPathSatisfying("$.content[0].screenings[0].availableSeats",
+                            seats -> assertThat(seats).isEqualTo(3));
 
-            mockMvc.perform(get("/api/movies/now-showing")
+            assertThat(mvc.get().uri("/api/movies/now-showing")
                             .param("to", OffsetDateTime.now().plusDays(1).plusHours(1).toString()))
-                    .andExpect(jsonPath("$.content[0].screenings.length()").value(1));
+                    .bodyJson().extractingPath("$.content[0].screenings").asArray().hasSize(1);
         }
     }
 
@@ -522,17 +522,18 @@ class FrontendRequestsApiTests {
 
         @Test
         @DisplayName("matches part of the e-mail or of the name")
-        void partialMatches() throws Exception {
+        void partialMatches() {
             String admin = bearer(ADMIN_EMAIL);
-            mockMvc.perform(get("/api/users").param("email", "ADA@").header(HttpHeaders.AUTHORIZATION, admin))
-                    .andExpect(jsonPath("$.totalElements").value(1))
-                    .andExpect(jsonPath("$.content[0].email").value(CUSTOMER_EMAIL));
-            mockMvc.perform(get("/api/users").param("name", "babb").header(HttpHeaders.AUTHORIZATION, admin))
-                    .andExpect(jsonPath("$.content[0].email").value(OTHER_EMAIL));
-            mockMvc.perform(get("/api/users").param("name", "ada love").header(HttpHeaders.AUTHORIZATION, admin))
-                    .andExpect(jsonPath("$.content[0].email").value(CUSTOMER_EMAIL));
-            mockMvc.perform(get("/api/users").param("email", "%").header(HttpHeaders.AUTHORIZATION, admin))
-                    .andExpect(jsonPath("$.totalElements").value(0));
+            assertThat(mvc.get().uri("/api/users").param("email", "ADA@").header(HttpHeaders.AUTHORIZATION, admin))
+                    .bodyJson()
+                    .hasPathSatisfying("$.totalElements", total -> assertThat(total).isEqualTo(1))
+                    .hasPathSatisfying("$.content[0].email", email -> assertThat(email).isEqualTo(CUSTOMER_EMAIL));
+            assertThat(mvc.get().uri("/api/users").param("name", "babb").header(HttpHeaders.AUTHORIZATION, admin))
+                    .bodyJson().extractingPath("$.content[0].email").isEqualTo(OTHER_EMAIL);
+            assertThat(mvc.get().uri("/api/users").param("name", "ada love").header(HttpHeaders.AUTHORIZATION, admin))
+                    .bodyJson().extractingPath("$.content[0].email").isEqualTo(CUSTOMER_EMAIL);
+            assertThat(mvc.get().uri("/api/users").param("email", "%").header(HttpHeaders.AUTHORIZATION, admin))
+                    .bodyJson().extractingPath("$.totalElements").isEqualTo(0);
         }
     }
 
@@ -542,25 +543,29 @@ class FrontendRequestsApiTests {
 
         @Test
         @DisplayName("embeds the seat map only when asked to")
-        void embedsSeatMap() throws Exception {
-            mockMvc.perform(get("/api/screenings/{id}", screening.getUuid()).param("include", "seatMap"))
-                    .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.seatMap.screeningId").value(screening.getUuid().toString()))
-                    .andExpect(jsonPath("$.seatMap.seats.length()").value(3));
-            mockMvc.perform(get("/api/screenings/{id}", screening.getUuid()))
-                    .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.seatMap").doesNotExist());
+        void embedsSeatMap() {
+            assertThat(mvc.get().uri("/api/screenings/{id}", screening.getUuid()).param("include", "seatMap"))
+                    .hasStatusOk()
+                    .bodyJson()
+                    .hasPathSatisfying("$.seatMap.screeningId",
+                            id -> assertThat(id).isEqualTo(screening.getUuid().toString()))
+                    .hasPathSatisfying("$.seatMap.seats", seats -> assertThat(seats).asArray().hasSize(3));
+            assertThat(mvc.get().uri("/api/screenings/{id}", screening.getUuid()))
+                    .hasStatusOk()
+                    .bodyJson().doesNotHavePath("$.seatMap");
         }
 
         @Test
         @DisplayName("rejects an unknown include value")
-        void rejectsUnknown() throws Exception {
-            mockMvc.perform(get("/api/screenings/{id}", screening.getUuid()).param("include", "everything"))
-                    .andExpect(status().isBadRequest())
-                    .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
-                    .andExpect(jsonPath("$.violations[0].field").value("include"))
-                    .andExpect(jsonPath("$.violations[0].code").value("OneOf"))
-                    .andExpect(jsonPath("$.violations[0].params.values[0]").value("seatMap"));
+        void rejectsUnknown() {
+            assertThat(mvc.get().uri("/api/screenings/{id}", screening.getUuid()).param("include", "everything"))
+                    .hasStatus(HttpStatus.BAD_REQUEST)
+                    .bodyJson()
+                    .hasPathSatisfying("$.code", code -> assertThat(code).isEqualTo("VALIDATION_FAILED"))
+                    .hasPathSatisfying("$.violations[0].field", field -> assertThat(field).isEqualTo("include"))
+                    .hasPathSatisfying("$.violations[0].code", code -> assertThat(code).isEqualTo("OneOf"))
+                    .hasPathSatisfying("$.violations[0].params.values[0]",
+                            value -> assertThat(value).isEqualTo("seatMap"));
         }
     }
 }

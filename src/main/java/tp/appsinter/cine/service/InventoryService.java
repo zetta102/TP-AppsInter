@@ -2,6 +2,7 @@ package tp.appsinter.cine.service;
 
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
+import org.jspecify.annotations.Nullable;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -49,7 +50,7 @@ public class InventoryService {
     @Transactional
     public CreateInventoryResponseDTO adjustStock(UUID uuid,
                                                   InventoryAdjustmentRequestDTO request,
-                                                  String adjustedBy) {
+                                                  @Nullable String adjustedBy) {
         Inventory inventory = getInventory(uuid);
         if (request.delta() == 0) {
             throw BusinessRuleException.emptyAdjustment();
@@ -104,8 +105,8 @@ public class InventoryService {
         return CreateInventoryResponseDTO.from(inventoryRepository.save(inventory));
     }
 
-    public PageResponseDTO<CreateInventoryResponseDTO> findAll(ProductCategory category,
-                                                               String search,
+    public PageResponseDTO<CreateInventoryResponseDTO> findAll(@Nullable ProductCategory category,
+                                                               @Nullable String search,
                                                                boolean includeArchived,
                                                                Pageable pageable) {
         return PageResponseDTO.from(search(category, search, includeArchived, pageable),
@@ -116,8 +117,8 @@ public class InventoryService {
      * Misma búsqueda que {@link #findAll}, pero proyectada al catálogo público: sin stock ni costo,
      * y nunca con productos archivados.
      */
-    public PageResponseDTO<ProductResponseDTO> findAllProducts(ProductCategory category,
-                                                               String search,
+    public PageResponseDTO<ProductResponseDTO> findAllProducts(@Nullable ProductCategory category,
+                                                               @Nullable String search,
                                                                Pageable pageable) {
         return PageResponseDTO.from(search(category, search, false, pageable), ProductResponseDTO::from);
     }
@@ -126,8 +127,8 @@ public class InventoryService {
         return ProductResponseDTO.from(getInventory(uuid));
     }
 
-    private Page<Inventory> search(ProductCategory category,
-                                   String search,
+    private Page<Inventory> search(@Nullable ProductCategory category,
+                                   @Nullable String search,
                                    boolean includeArchived,
                                    Pageable pageable) {
         String term = search == null || search.isBlank() ? null : search.trim();
@@ -147,7 +148,7 @@ public class InventoryService {
      * lugar de perderse.
      */
     @Transactional
-    public CreateInventoryResponseDTO update(UUID uuid, CreateInventoryRequestDTO request, String adjustedBy) {
+    public CreateInventoryResponseDTO update(UUID uuid, CreateInventoryRequestDTO request, @Nullable String adjustedBy) {
         Inventory inventory = getInventory(uuid);
         if (inventoryRepository.existsByProductNameIgnoreCaseAndUuidNot(request.productName(), uuid)) {
             throw ConflictException.nameTaken(

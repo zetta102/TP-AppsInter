@@ -1,6 +1,7 @@
 package tp.appsinter.cine.repository;
 
 import jakarta.persistence.LockModeType;
+import org.jspecify.annotations.Nullable;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -46,10 +47,10 @@ public interface MovieScreeningRepository extends JpaRepository<MovieScreening, 
               and s.startsAt <= coalesce(:to, s.startsAt)
               and (:includeArchived = true or s.archivedAt is null)
             """)
-    Page<MovieScreening> search(@Param("movieUuid") UUID movieUuid,
-                                @Param("roomUuid") UUID roomUuid,
-                                @Param("from") OffsetDateTime from,
-                                @Param("to") OffsetDateTime to,
+    Page<MovieScreening> search(@Param("movieUuid") @Nullable UUID movieUuid,
+                                @Param("roomUuid") @Nullable UUID roomUuid,
+                                @Param("from") @Nullable OffsetDateTime from,
+                                @Param("to") @Nullable OffsetDateTime to,
                                 @Param("includeArchived") boolean includeArchived,
                                 Pageable pageable);
 
@@ -71,7 +72,7 @@ public interface MovieScreeningRepository extends JpaRepository<MovieScreening, 
             """)
     List<MovieScreening> findShowingForMovies(@Param("movieUuids") Collection<UUID> movieUuids,
                                               @Param("from") OffsetDateTime from,
-                                              @Param("to") OffsetDateTime to);
+                                              @Param("to") @Nullable OffsetDateTime to);
 
     /**
      * Si la película tiene alguna función vigente que todavía no terminó. Bloquea archivarla: la
@@ -103,5 +104,5 @@ public interface MovieScreeningRepository extends JpaRepository<MovieScreening, 
     Optional<MovieScreening> findFirstOverlapInRoom(@Param("roomUuid") UUID roomUuid,
                                                     @Param("startsAt") OffsetDateTime startsAt,
                                                     @Param("endsAt") OffsetDateTime endsAt,
-                                                    @Param("excludedUuid") UUID excludedUuid);
+                                                    @Param("excludedUuid") @Nullable UUID excludedUuid);
 }

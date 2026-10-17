@@ -24,6 +24,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -65,7 +66,7 @@ public class SeatService {
     @Transactional
     public SeatLayoutResponseDTO createBulk(UUID screenRoomId, BulkSeatRequestDTO request) {
         ScreenRoom room = screenRoomService.getScreenRoom(screenRoomId);
-        return apply(room, request.seats(), request.onConflict());
+        return apply(room, request.seats(), Objects.requireNonNull(request.onConflict()));
     }
 
     /**
@@ -81,10 +82,10 @@ public class SeatService {
                 ? rowIndex(request.startRow())
                 : nextFreeRowIndex(screenRoomId);
 
-        Set<String> premium = request.premiumRows().stream()
+        Set<String> premium = Objects.requireNonNull(request.premiumRows()).stream()
                 .map(row -> row.toUpperCase(Locale.ROOT))
                 .collect(Collectors.toSet());
-        Set<String> skipped = request.skip().stream()
+        Set<String> skipped = Objects.requireNonNull(request.skip()).stream()
                 .map(position -> position.toUpperCase(Locale.ROOT).replace(" ", ""))
                 .collect(Collectors.toSet());
 
@@ -103,7 +104,7 @@ public class SeatService {
         if (seats.isEmpty()) {
             throw BusinessRuleException.emptyLayout();
         }
-        return apply(room, seats, request.onConflict());
+        return apply(room, seats, Objects.requireNonNull(request.onConflict()));
     }
 
     /**

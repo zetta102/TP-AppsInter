@@ -4,12 +4,14 @@ import jakarta.persistence.criteria.Fetch;
 import jakarta.persistence.criteria.JoinType;
 import jakarta.persistence.criteria.Path;
 import jakarta.persistence.criteria.Root;
+import org.jspecify.annotations.Nullable;
 import org.springframework.data.jpa.domain.Specification;
 import tp.appsinter.cine.model.entities.MovieScreening;
 import tp.appsinter.cine.model.entities.Reservation;
 import tp.appsinter.cine.model.utils.ReservationStatus;
 
 import java.time.OffsetDateTime;
+import java.util.Locale;
 import java.util.UUID;
 
 /**
@@ -22,6 +24,10 @@ import java.util.UUID;
  * <p>Todas las asociaciones que se navegan ({@code user}, {@code movieScreening} y las suyas) son
  * obligatorias, así que la navegación por camino produce un {@code inner join} correcto y no hace
  * falta construir los {@code join} a mano.
+ *
+ * <p>Un criterio ausente devuelve {@link Specification#unrestricted()} en lugar de {@code null}:
+ * componer con nulo dejó de estar permitido, y el filtro neutro mantiene el encadenado legible sin
+ * repartir comprobaciones por cada llamador.
  */
 public final class ReservationSpecifications {
 
@@ -49,16 +55,18 @@ public final class ReservationSpecifications {
 
     public static Specification<Reservation> ownedBy(String email) {
         return (root, query, builder) -> builder.equal(
-                builder.lower(root.get("user").get("email")), email.toLowerCase());
+                builder.lower(root.get("user").get("email")), email.toLowerCase(Locale.ROOT));
     }
 
-    public static Specification<Reservation> hasStatus(ReservationStatus status) {
-        return status == null ? always() : (root, query, builder) -> builder.equal(root.get("status"), status);
+    public static Specification<Reservation> hasStatus(@Nullable ReservationStatus status) {
+        return status == null
+                ? Specification.unrestricted()
+                : (root, query, builder) -> builder.equal(root.get("status"), status);
     }
 
-    public static Specification<Reservation> hasUser(UUID userId) {
+    public static Specification<Reservation> hasUser(@Nullable UUID userId) {
         return userId == null
-                ? always()
+                ? Specification.unrestricted()
                 : (root, query, builder) -> builder.equal(root.get("user").get("uuid"), userId);
     }
 
@@ -66,30 +74,31 @@ public final class ReservationSpecifications {
      * Coincidencia parcial e insensible a mayúsculas sobre el correo del titular, que es como un
      * operador de mostrador busca a un cliente.
      */
-    public static Specification<Reservation> emailContains(String email) {
+    public static Specification<Reservation> emailContains(@Nullable String email) {
         if (email == null || email.isBlank()) {
-            return always();
+            return Specification.unrestricted();
         }
-        String pattern = "%" + email.trim().toLowerCase() + "%";
+        String pattern = "%" + email.trim().toLowerCase(Locale.ROOT) + "%";
         return (root, query, builder) -> builder.like(builder.lower(root.get("user").get("email")), pattern);
     }
 
-    public static Specification<Reservation> hasScreening(UUID screeningId) {
+    public static Specification<Reservation> hasScreening(@Nullable UUID screeningId) {
         return screeningId == null
-                ? always()
+                ? Specification.unrestricted()
                 : (root, query, builder) -> builder.equal(screening(root).get("uuid"), screeningId);
     }
 
-    public static Specification<Reservation> hasMovie(UUID movieId) {
+    public static Specification<Reservation> hasMovie(@Nullable UUID movieId) {
         return movieId == null
-                ? always()
+                ? Specification.unrestricted()
                 : (root, query, builder) -> builder.equal(screening(root).get("movie").get("uuid"), movieId);
     }
 
     /**
      * Rango sobre {@code createdAt}: cuándo se compró la reserva.
      */
-    public static Specification<Reservation> createdBetween(OffsetDateTime from, OffsetDateTime to) {
+    public static Specification<Reservation> createdBetween(@Nullable OffsetDateTime from,
+                                                            @Nullable OffsetDateTime to) {
         return between(from, to, root -> root.get("createdAt"));
     }
 
@@ -97,33 +106,23 @@ public final class ReservationSpecifications {
      * Rango sobre el {@code startsAt} de la función: cuándo hay que ir al cine. Es el rango que
      * espera un cliente cuando pregunta por «lo que viene».
      */
-    public static Specification<Reservation> screeningBetween(OffsetDateTime from, OffsetDateTime to) {
+    public static Specification<Reservation> screeningBetween(@Nullable OffsetDateTime from,
+                                                              @Nullable OffsetDateTime to) {
         return between(from, to, root -> screening(root).get("startsAt"));
     }
 
     public static Specification<Reservation> upcoming(boolean upcomingOnly) {
         return !upcomingOnly
-                ? always()
+                ? Specification.unrestricted()
                 : (root, query, builder) -> builder.greaterThanOrEqualTo(
                 screening(root).get("startsAt"), OffsetDateTime.now());
     }
 
-    /**
-     * Filtro neutro.
-     *
-     * <p>Los criterios ausentes devuelven esto en lugar de {@code null}: componer con nulo dejó de
-     * estar permitido, y devolver una condición siempre verdadera mantiene el encadenado legible sin
-     * repartir comprobaciones por cada llamador.
-     */
-    private static Specification<Reservation> always() {
-        return (root, query, builder) -> builder.conjunction();
-    }
-
-    private static Specification<Reservation> between(OffsetDateTime from,
-                                                      OffsetDateTime to,
+    private static Specification<Reservation> between(@Nullable OffsetDateTime from,
+                                                      @Nullable OffsetDateTime to,
                                                       DateAttribute attribute) {
         if (from == null && to == null) {
-            return always();
+            return Specification.unrestricted();
         }
         return (root, query, builder) -> {
             Path<OffsetDateTime> path = attribute.of(root);

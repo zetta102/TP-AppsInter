@@ -182,7 +182,7 @@ public class UserService {
      * pantalla pública: un correo que ya no corresponde a nadie sólo significa que no hay a quién
      * tratar de forma especial.
      */
-    public UUID findUuidByEmail(String email) {
+    public @Nullable UUID findUuidByEmail(String email) {
         return userRepository.findByEmailIgnoreCase(email).map(User::getUuid).orElse(null);
     }
 

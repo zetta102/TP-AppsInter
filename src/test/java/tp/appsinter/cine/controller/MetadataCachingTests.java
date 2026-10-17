@@ -8,14 +8,11 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
-import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.test.web.servlet.assertj.MockMvcTester;
+import org.springframework.test.web.servlet.assertj.MvcTestResult;
 import tp.appsinter.cine.PostgresTestcontainersConfiguration;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.head;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
  * Los metadatos son cacheables: {@code HEAD} tiene que anunciar el mismo {@code Cache-Control} y el
@@ -29,22 +26,22 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class MetadataCachingTests {
 
     @Autowired
-    private MockMvc mockMvc;
+    private MockMvcTester mvc;
 
     @ParameterizedTest(name = "{0}")
     @ValueSource(strings = {"/api/metadata/config", "/api/metadata/enums"})
     @DisplayName("HEAD carries the same caching headers as GET")
-    void headMatchesGet(String path) throws Exception {
-        MvcResult viaGet = mockMvc.perform(get(path)).andExpect(status().isOk()).andReturn();
-        MvcResult viaHead = mockMvc.perform(head(path)).andExpect(status().isOk()).andReturn();
+    void headMatchesGet(String path) {
+        MvcTestResult viaGet = mvc.get().uri(path).exchange();
+        MvcTestResult viaHead = mvc.head().uri(path).exchange();
 
+        assertThat(viaGet).hasStatusOk().containsHeader(HttpHeaders.ETAG);
         String cacheControl = viaGet.getResponse().getHeader(HttpHeaders.CACHE_CONTROL);
         assertThat(cacheControl).contains("max-age=86400").contains("public");
-        assertThat(viaHead.getResponse().getHeader(HttpHeaders.CACHE_CONTROL)).isEqualTo(cacheControl);
-        assertThat(viaHead.getResponse().getHeader(HttpHeaders.ETAG))
-                .isNotBlank()
-                .isEqualTo(viaGet.getResponse().getHeader(HttpHeaders.ETAG));
-        assertThat(viaHead.getResponse().getHeader(HttpHeaders.PRAGMA)).isNull();
+        assertThat(viaHead).hasStatusOk()
+                .hasHeader(HttpHeaders.CACHE_CONTROL, cacheControl)
+                .hasHeader(HttpHeaders.ETAG, viaGet.getResponse().getHeader(HttpHeaders.ETAG))
+                .doesNotContainHeader(HttpHeaders.PRAGMA);
         // El cuerpo no se comprueba: lo descarta el contenedor de servlets, que MockMvc no simula.
     }
 }

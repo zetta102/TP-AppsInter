@@ -2,6 +2,7 @@ package tp.appsinter.cine.model.entities;
 
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.UuidGenerator;
 
 import java.math.BigDecimal;
 import java.util.UUID;
@@ -28,7 +29,8 @@ import java.util.UUID;
 public class ReservationItem {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
+    @GeneratedValue
+    @UuidGenerator(style = UuidGenerator.Style.VERSION_7)
     @EqualsAndHashCode.Include
     private UUID uuid;
 

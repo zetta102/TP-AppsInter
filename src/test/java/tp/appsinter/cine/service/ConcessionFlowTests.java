@@ -8,6 +8,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.TransactionTemplate;
 import tp.appsinter.cine.DatabaseCleaner;
 import tp.appsinter.cine.PostgresTestcontainersConfiguration;
 import tp.appsinter.cine.exception.BusinessRuleException;
@@ -24,10 +28,15 @@ import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertAll;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 
 @SpringBootTest
 @Import(PostgresTestcontainersConfiguration.class)
@@ -39,6 +48,11 @@ class ConcessionFlowTests {
     @Autowired
     private ReservationService reservationService;
     @Autowired
+    private PlatformTransactionManager transactionManager;
+    /**
+     * Espía que llama al repositorio real; sólo la prueba de concurrencia le cambia el comportamiento.
+     */
+    @MockitoSpyBean
     private InventoryRepository inventoryRepository;
     @Autowired
     private SeatRepository seatRepository;
@@ -184,6 +198,41 @@ class ConcessionFlowTests {
                     () -> assertThat(cancelled.originalTotalPrice()).isGreaterThan(BigDecimal.ZERO),
                     () -> assertThat(inventoryRepository.findById(popcorn.getUuid()))
                             .hasValueSatisfying(item -> assertThat(item.getQuantity()).isEqualTo(10)));
+        }
+    }
+
+    @Nested
+    @DisplayName("when another write changes the stock concurrently")
+    class OnConcurrentStockChange {
+
+        @Test
+        @DisplayName("retries the purchase against the fresh stock instead of failing")
+        void retriesOnVersionConflict() {
+            TransactionTemplate otherTransaction = new TransactionTemplate(transactionManager);
+            otherTransaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+            AtomicBoolean interfered = new AtomicBoolean();
+            // Justo después de que la compra lee el producto, otra transacción confirma un cambio sobre
+            // él: la versión que la compra tiene en memoria queda vieja y su escritura pierde.
+            doAnswer(invocation -> {
+                // El espía de un repositorio delega en el proxy de Spring Data y no tiene «método real»
+                // al que llamar; findAllById hace la misma lectura, porque uuid es el identificador.
+                List<UUID> ids = invocation.getArgument(0);
+                List<Inventory> loaded = inventoryRepository.findAllById(ids);
+                if (interfered.compareAndSet(false, true)) {
+                    otherTransaction.executeWithoutResult(
+                            status -> inventoryRepository.applyDelta(popcorn.getUuid(), 0));
+                }
+                return loaded;
+            }).when(inventoryRepository).findByUuidIn(anyList());
+
+            CreateReservationResponseDTO response = book(new ReservationItemRequestDTO(popcorn.getUuid(), 2));
+
+            assertAll(
+                    () -> assertThat(response.items()).hasSize(1),
+                    () -> assertThat(inventoryRepository.findById(popcorn.getUuid()))
+                            .hasValueSatisfying(item -> assertThat(item.getQuantity()).isEqualTo(8)),
+                    // Un intento perdió contra la versión nueva y el reintento la leyó fresca.
+                    () -> verify(inventoryRepository, times(2)).findByUuidIn(anyList()));
         }
     }
 }

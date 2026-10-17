@@ -2,10 +2,13 @@ package tp.appsinter.cine.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.Nullable;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.resilience.annotation.Retryable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tp.appsinter.cine.exception.BusinessRuleException;
@@ -67,6 +70,15 @@ public class ReservationService {
         return basePrice.multiply(multiplier).setScale(2, RoundingMode.HALF_UP);
     }
 
+    /**
+     * Compra butacas y confitería.
+     *
+     * <p>El stock de confitería se descuenta en memoria bajo {@code @Version}: si otra compra tocó el
+     * mismo producto entre la lectura y la escritura, el intento entero se deshace y se repite con el
+     * stock fresco. Sólo cuando los reintentos se agotan llega al cliente {@code OPTIMISTIC_LOCK}.
+     */
+    @Retryable(includes = OptimisticLockingFailureException.class,
+            maxRetries = 3, delay = 50, jitter = 25, multiplier = 2)
     @Transactional
     public CreateReservationResponseDTO createReservation(String userEmail, CreateReservationDTO request) {
         User user = userService.getByEmail(userEmail);
@@ -210,7 +222,7 @@ public class ReservationService {
         List<PricedSeat> pricedSeats = seats.stream()
                 .map(seat -> new PricedSeat(seat, priceFor(screening.getBasePrice(), seat.getSeatType())))
                 .toList();
-        return new PricedBasket(screening, pricedSeats, priceProducts(request.products()));
+        return new PricedBasket(screening, pricedSeats, priceProducts(Objects.requireNonNull(request.products())));
     }
 
     /**
@@ -230,7 +242,7 @@ public class ReservationService {
 
         List<PricedProduct> priced = new ArrayList<>(products.size());
         for (ReservationItemRequestDTO product : products) {
-            Inventory inventory = byId.get(product.inventoryId());
+            Inventory inventory = Objects.requireNonNull(byId.get(product.inventoryId()));
             if (inventory.isArchived()) {
                 throw BusinessRuleException.resourceArchived("Inventory product", inventory.getUuid());
             }
@@ -296,7 +308,12 @@ public class ReservationService {
      * <p>Un cliente no puede cancelar una vez que la función empezó: ya no hay butaca que devolver a
      * la venta y la cancelación sólo serviría para anular el cobro. La administración sí puede,
      * porque es quien resuelve reclamos.
+     *
+     * <p>Devolver la confitería es la misma lectura-escritura bajo {@code @Version} que la compra, y
+     * se reintenta igual ante una escritura concurrente.
      */
+    @Retryable(includes = OptimisticLockingFailureException.class,
+            maxRetries = 3, delay = 50, jitter = 25, multiplier = 2)
     @Transactional
     public CreateReservationResponseDTO cancelReservation(UUID uuid, String userEmail, boolean isAdmin) {
         Reservation reservation = getReservation(uuid);
@@ -351,7 +368,7 @@ public class ReservationService {
                 .and(ReservationSpecifications.hasStatus(filter.status()))
                 .and(ReservationSpecifications.hasMovie(filter.movieId()))
                 .and(ReservationSpecifications.hasScreening(filter.screeningId()))
-                .and(ReservationSpecifications.upcoming(filter.upcomingOnly()))
+                .and(ReservationSpecifications.upcoming(Boolean.TRUE.equals(filter.upcomingOnly())))
                 .and(ReservationSpecifications.screeningBetween(filter.from(), filter.to()));
         return PageResponseDTO.from(reservationRepository.findAll(spec, pageable),
                 CreateReservationResponseDTO::from);
@@ -370,7 +387,7 @@ public class ReservationService {
                 .and(ReservationSpecifications.emailContains(filter.email()))
                 .and(ReservationSpecifications.hasScreening(filter.screeningId()))
                 .and(ReservationSpecifications.hasMovie(filter.movieId()))
-                .and(ReservationSpecifications.upcoming(filter.upcomingOnly()))
+                .and(ReservationSpecifications.upcoming(Boolean.TRUE.equals(filter.upcomingOnly())))
                 .and(ReservationSpecifications.createdBetween(filter.from(), filter.to()));
         return PageResponseDTO.from(reservationRepository.findAll(spec, pageable),
                 CreateReservationResponseDTO::from);
@@ -386,7 +403,7 @@ public class ReservationService {
      * @param viewerEmail quien consulta, o {@code null} si no está autenticado; sus propios
      *                    bloqueos no se marcan, porque para esa persona esas butacas están libres
      */
-    public SeatMapResponseDTO findSeatMap(UUID screeningUuid, String viewerEmail) {
+    public SeatMapResponseDTO findSeatMap(UUID screeningUuid, @Nullable String viewerEmail) {
         MovieScreening screening = movieScreeningService.getScreening(screeningUuid);
         Set<UUID> booked = new HashSet<>(ticketRepository.findBookedSeatIds(screeningUuid));
         UUID viewerUuid = viewerEmail == null ? null : userService.findUuidByEmail(viewerEmail);

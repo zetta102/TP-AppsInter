@@ -3,6 +3,7 @@ package tp.appsinter.cine.security;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
+import org.jspecify.annotations.Nullable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ProblemDetail;
@@ -35,7 +36,7 @@ public class ProblemDetailWriter {
     void write(HttpServletRequest request,
                HttpServletResponse response,
                HttpStatus status,
-               String detail,
+               @Nullable String detail,
                ErrorCode defaultCode) throws IOException {
         ProblemDetail problem = problems.create(status, resolveCode(request, defaultCode), detail);
         problem.setInstance(URI.create(request.getRequestURI()));

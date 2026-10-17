@@ -58,7 +58,7 @@ public interface SeatHoldRepository extends JpaRepository<SeatHold, UUID> {
               and h.expiresAt > :now
             """)
     List<UUID> findHeldSeatIds(@Param("screeningUuid") UUID screeningUuid,
-                               @Param("viewerUuid") UUID viewerUuid,
+                               @Param("viewerUuid") @Nullable UUID viewerUuid,
                                @Param("now") OffsetDateTime now);
 
     /**
