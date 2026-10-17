@@ -31,6 +31,7 @@ import tp.appsinter.cine.room.dto.request.SeatRequestDTO;
 import tp.appsinter.cine.screening.MovieScreening;
 import tp.appsinter.cine.screening.MovieScreeningRepository;
 import tp.appsinter.cine.screening.MovieScreeningService;
+import tp.appsinter.cine.screening.SeatMapService;
 import tp.appsinter.cine.screening.dto.request.ScreeningRequestDTO;
 import tp.appsinter.cine.screening.dto.response.SeatAvailabilityResponseDTO;
 import tp.appsinter.cine.shared.error.BusinessRuleException;
@@ -61,6 +62,8 @@ class BookingFlowTests {
     private ReservationService reservationService;
     @Autowired
     private MovieScreeningService movieScreeningService;
+    @Autowired
+    private SeatMapService seatMapService;
     @Autowired
     private SeatService seatService;
     @Autowired
@@ -395,7 +398,7 @@ class BookingFlowTests {
                     new ReservationRequestDTO(screening.getUuid(), List.of(premiumSeat.getUuid()), List.of()));
 
             List<SeatAvailabilityResponseDTO> availability =
-                    reservationService.findSeatMap(screening.getUuid(), null).seats();
+                    seatMapService.findSeatMap(screening.getUuid(), null).seats();
 
             assertThat(availability)
                     .extracting(SeatAvailabilityResponseDTO::seatId, SeatAvailabilityResponseDTO::available)

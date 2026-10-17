@@ -6,12 +6,10 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import tp.appsinter.cine.hold.SeatHoldRepository;
 import tp.appsinter.cine.movie.Movie;
 import tp.appsinter.cine.movie.MovieRepository;
 import tp.appsinter.cine.movie.MovieService;
 import tp.appsinter.cine.movie.dto.response.MovieResponseDTO;
-import tp.appsinter.cine.reservation.TicketRepository;
 import tp.appsinter.cine.room.ScreenRoom;
 import tp.appsinter.cine.room.ScreenRoomService;
 import tp.appsinter.cine.room.SeatRepository;
@@ -51,8 +49,8 @@ public class MovieScreeningService {
     private final ScreenRoomService screenRoomService;
     private final UserService userService;
     private final SeatRepository seatRepository;
-    private final TicketRepository ticketRepository;
-    private final SeatHoldRepository seatHoldRepository;
+    private final SoldSeats soldSeats;
+    private final HeldSeats heldSeats;
 
     @Transactional
     public ScreeningResponseDTO create(ScreeningRequestDTO request) {
@@ -165,9 +163,8 @@ public class MovieScreeningService {
         Set<UUID> screeningIds = screenings.stream().map(MovieScreening::getUuid).collect(Collectors.toSet());
 
         Map<UUID, Integer> capacity = tally(seatRepository.countByScreenRoom(roomIds));
-        Map<UUID, Integer> booked = tally(ticketRepository.countBookedByScreening(screeningIds));
-        Map<UUID, Integer> held = tally(
-                seatHoldRepository.countHeldByScreening(screeningIds, viewerUuid, OffsetDateTime.now()));
+        Map<UUID, Integer> booked = soldSeats.countByScreening(screeningIds);
+        Map<UUID, Integer> held = heldSeats.countByScreening(screeningIds, viewerUuid, OffsetDateTime.now());
 
         return screenings.stream()
                 .map(screening -> ScreeningResponseDTO.from(
@@ -327,7 +324,7 @@ public class MovieScreeningService {
      * entradas apuntan a butacas de la sala original y quien las compró eligió esa función.
      */
     private void requireUnsold(MovieScreening screening) {
-        if (ticketRepository.existsByMovieScreeningUuidAndCancelledAtIsNull(screening.getUuid())) {
+        if (soldSeats.anyActive(screening.getUuid())) {
             throw ConflictException.resourceInUse(
                     "Screening %s already has tickets sold; only its base price can change"
                             .formatted(screening.getUuid()),

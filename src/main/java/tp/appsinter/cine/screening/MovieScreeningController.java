@@ -19,7 +19,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
-import tp.appsinter.cine.reservation.ReservationService;
 import tp.appsinter.cine.screening.dto.request.ScreeningRequestDTO;
 import tp.appsinter.cine.screening.dto.response.ScreeningResponseDTO;
 import tp.appsinter.cine.screening.dto.response.SeatMapResponseDTO;
@@ -44,7 +43,7 @@ public class MovieScreeningController {
     private static final String SEAT_MAP = "seatMap";
 
     private final MovieScreeningService movieScreeningService;
-    private final ReservationService reservationService;
+    private final SeatMapService seatMapService;
     private final SeatStreamService seatStreamService;
 
     @PostMapping
@@ -86,7 +85,7 @@ public class MovieScreeningController {
         boolean withSeatMap = includes(include);
         String viewer = viewer(authentication);
         ScreeningResponseDTO screening = movieScreeningService.findById(uuid, includeAvailability, viewer);
-        return withSeatMap ? screening.withSeatMap(reservationService.findSeatMap(uuid, viewer)) : screening;
+        return withSeatMap ? screening.withSeatMap(seatMapService.findSeatMap(uuid, viewer)) : screening;
     }
 
     /**
@@ -122,7 +121,7 @@ public class MovieScreeningController {
      */
     @GetMapping("/{uuid}/seats")
     public SeatMapResponseDTO findSeatMap(Authentication authentication, @PathVariable UUID uuid) {
-        return reservationService.findSeatMap(uuid, viewer(authentication));
+        return seatMapService.findSeatMap(uuid, viewer(authentication));
     }
 
     /**

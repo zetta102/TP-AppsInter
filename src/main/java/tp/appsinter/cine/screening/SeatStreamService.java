@@ -10,8 +10,6 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.event.TransactionalEventListener;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
-import tp.appsinter.cine.hold.SeatHoldRepository;
-import tp.appsinter.cine.reservation.TicketRepository;
 import tp.appsinter.cine.screening.dto.response.SeatStateResponseDTO;
 import tp.appsinter.cine.user.UserService;
 
@@ -47,20 +45,20 @@ public class SeatStreamService {
 
     private final MovieScreeningService movieScreeningService;
     private final UserService userService;
-    private final TicketRepository ticketRepository;
-    private final SeatHoldRepository seatHoldRepository;
+    private final SoldSeats soldSeats;
+    private final HeldSeats heldSeats;
     private final Duration timeout;
     private final Map<UUID, Set<Subscriber>> subscribers = new ConcurrentHashMap<>();
 
     public SeatStreamService(MovieScreeningService movieScreeningService,
                              UserService userService,
-                             TicketRepository ticketRepository,
-                             SeatHoldRepository seatHoldRepository,
+                             SoldSeats soldSeats,
+                             HeldSeats heldSeats,
                              @Value("${cine.seat-stream.timeout:PT30M}") Duration timeout) {
         this.movieScreeningService = movieScreeningService;
         this.userService = userService;
-        this.ticketRepository = ticketRepository;
-        this.seatHoldRepository = seatHoldRepository;
+        this.soldSeats = soldSeats;
+        this.heldSeats = heldSeats;
         this.timeout = timeout;
     }
 
@@ -111,7 +109,7 @@ public class SeatStreamService {
         UUID screeningUuid = event.screeningId();
         List<UUID> seatIds = List.copyOf(event.seatIds());
         OffsetDateTime now = OffsetDateTime.now();
-        Set<UUID> booked = new HashSet<>(ticketRepository.findBookedSeatIdsAmong(screeningUuid, seatIds));
+        Set<UUID> booked = new HashSet<>(soldSeats.findIdsAmong(screeningUuid, seatIds));
 
         Map<Optional<UUID>, List<SeatStateResponseDTO>> byViewer = new HashMap<>();
         for (Subscriber subscriber : listening) {
@@ -129,7 +127,7 @@ public class SeatStreamService {
                                                  @Nullable UUID viewerUuid,
                                                  OffsetDateTime now) {
         Set<UUID> heldByOthers = new HashSet<>(
-                seatHoldRepository.findHeldSeatIdsAmong(screeningUuid, seatIds, viewerUuid, now));
+                heldSeats.findIdsAmong(screeningUuid, seatIds, viewerUuid, now));
         return seatIds.stream()
                 .map(seatId -> {
                     boolean sold = booked.contains(seatId);

@@ -7,7 +7,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tp.appsinter.cine.room.dto.request.RoomRequestDTO;
 import tp.appsinter.cine.room.dto.response.RoomResponseDTO;
-import tp.appsinter.cine.screening.MovieScreeningRepository;
 import tp.appsinter.cine.shared.dto.response.PageResponseDTO;
 import tp.appsinter.cine.shared.error.BusinessRuleException;
 import tp.appsinter.cine.shared.error.ConflictException;
@@ -22,7 +21,7 @@ import java.util.UUID;
 public class ScreenRoomService {
 
     private final ScreenRoomRepository screenRoomRepository;
-    private final MovieScreeningRepository movieScreeningRepository;
+    private final RoomScreenings roomScreenings;
 
     @Transactional
     public RoomResponseDTO create(RoomRequestDTO request) {
@@ -76,7 +75,7 @@ public class ScreenRoomService {
             return RoomResponseDTO.from(room);
         }
         OffsetDateTime now = OffsetDateTime.now();
-        if (archived && movieScreeningRepository.existsByScreenRoomUuidAndArchivedAtIsNullAndEndsAtAfter(uuid, now)) {
+        if (archived && roomScreenings.hasUpcoming(uuid, now)) {
             throw ConflictException.resourceInUse(
                     "Screen room %s still has upcoming screenings; archive them first".formatted(uuid),
                     "Screen room", "Movie screening");

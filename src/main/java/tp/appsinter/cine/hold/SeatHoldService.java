@@ -2,19 +2,18 @@ package tp.appsinter.cine.hold;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.jspecify.annotations.Nullable;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tp.appsinter.cine.hold.dto.request.SeatHoldRequestDTO;
 import tp.appsinter.cine.hold.dto.response.SeatHoldResponseDTO;
-import tp.appsinter.cine.reservation.TicketRepository;
 import tp.appsinter.cine.room.Seat;
 import tp.appsinter.cine.room.SeatRepository;
 import tp.appsinter.cine.screening.MovieScreening;
 import tp.appsinter.cine.screening.MovieScreeningService;
 import tp.appsinter.cine.screening.SeatsChangedEvent;
+import tp.appsinter.cine.screening.SoldSeats;
 import tp.appsinter.cine.shared.error.BusinessRuleException;
 import tp.appsinter.cine.shared.error.ConflictException;
 import tp.appsinter.cine.shared.error.NotFoundException;
@@ -50,7 +49,7 @@ public class SeatHoldService {
 
     private final SeatHoldRepository seatHoldRepository;
     private final SeatRepository seatRepository;
-    private final TicketRepository ticketRepository;
+    private final SoldSeats soldSeats;
     private final MovieScreeningService movieScreeningService;
     private final UserService userService;
     private final SeatHoldProperties properties;
@@ -126,7 +125,7 @@ public class SeatHoldService {
             throw BusinessRuleException.seatsWrongRoom(roomUuid, seatIds);
         }
 
-        List<UUID> sold = ticketRepository.findBookedSeatIdsAmong(screening.getUuid(), seatIds);
+        List<UUID> sold = soldSeats.findIdsAmong(screening.getUuid(), seatIds);
         if (!sold.isEmpty()) {
             throw ConflictException.seatsUnavailable(
                     "One or more seats are already booked for this screening", sold);
@@ -205,17 +204,6 @@ public class SeatHoldService {
                     "The hold does not cover every requested seat", seatIds);
         }
         return hold;
-    }
-
-    /**
-     * Butacas que otro cliente está comprando en este momento, para que el mapa pueda distinguir
-     * «vendida» de «alguien la está comprando».
-     *
-     * @param viewerUuid quien mira; sus propios bloqueos no se marcan, porque para esa persona esas
-     *                   butacas sí están disponibles
-     */
-    public List<UUID> findHeldSeatIds(UUID screeningUuid, @Nullable UUID viewerUuid) {
-        return seatHoldRepository.findHeldSeatIds(screeningUuid, viewerUuid, OffsetDateTime.now());
     }
 
     /**

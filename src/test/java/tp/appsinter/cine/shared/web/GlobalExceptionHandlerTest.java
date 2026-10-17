@@ -9,6 +9,7 @@ import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.FieldSource;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.ProblemDetail;
+import org.springframework.security.authentication.BadCredentialsException;
 import tp.appsinter.cine.auth.RefreshTokenReusedException;
 import tp.appsinter.cine.shared.error.BusinessRuleException;
 import tp.appsinter.cine.shared.error.ConflictException;
@@ -72,10 +73,16 @@ class GlobalExceptionHandlerTest {
     @Test
     @DisplayName("reports a replayed refresh token as revoked, not as bad credentials")
     void refreshReuseIsRevoked() {
-        ProblemDetail problem = handler.handleRefreshTokenReused(new RefreshTokenReusedException("reused"));
+        ProblemDetail problem = handler.handleAuthentication(new RefreshTokenReusedException("reused"));
 
         assertThat(problem.getStatus()).isEqualTo(401);
         assertThat(problem.getProperties()).containsEntry("code", "TOKEN_REVOKED");
+        assertThat(problem.getDetail()).isEqualTo("reused");
+
+        ProblemDetail rejected = handler.handleAuthentication(new BadCredentialsException("bad password"));
+
+        assertThat(rejected.getProperties()).containsEntry("code", "INVALID_CREDENTIALS");
+        assertThat(rejected.getDetail()).isEqualTo("Invalid credentials");
     }
 
     @ParameterizedTest(name = "{0} / {1} → {3}")

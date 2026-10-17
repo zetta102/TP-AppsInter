@@ -2,7 +2,6 @@ package tp.appsinter.cine.reservation;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.jspecify.annotations.Nullable;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.OptimisticLockingFailureException;
@@ -20,14 +19,11 @@ import tp.appsinter.cine.reservation.dto.request.ReservationRequestDTO;
 import tp.appsinter.cine.reservation.dto.response.QuoteResponseDTO;
 import tp.appsinter.cine.reservation.dto.response.ReservationResponseDTO;
 import tp.appsinter.cine.room.Seat;
-import tp.appsinter.cine.room.SeatCoordinateComparator;
 import tp.appsinter.cine.room.SeatRepository;
 import tp.appsinter.cine.room.SeatType;
 import tp.appsinter.cine.screening.MovieScreening;
 import tp.appsinter.cine.screening.MovieScreeningService;
 import tp.appsinter.cine.screening.SeatsChangedEvent;
-import tp.appsinter.cine.screening.dto.response.SeatAvailabilityResponseDTO;
-import tp.appsinter.cine.screening.dto.response.SeatMapResponseDTO;
 import tp.appsinter.cine.shared.BusinessConstants;
 import tp.appsinter.cine.shared.dto.response.PageResponseDTO;
 import tp.appsinter.cine.shared.error.BusinessRuleException;
@@ -385,37 +381,6 @@ public class ReservationService {
                 .and(ReservationSpecifications.createdBetween(filter.from(), filter.to()));
         return PageResponseDTO.from(reservationRepository.findAll(spec, pageable),
                 ReservationResponseDTO::from);
-    }
-
-    /**
-     * Mapa de butacas de una función.
-     *
-     * <p>Distingue tres situaciones: libre, vendida y bloqueada por otro cliente. La última no es
-     * una venta, pero para quien mira el mapa se comporta como tal, y decirlo evita que elija una
-     * butaca que casi con seguridad va a perder.
-     *
-     * @param viewerEmail quien consulta, o {@code null} si no está autenticado; sus propios
-     *                    bloqueos no se marcan, porque para esa persona esas butacas están libres
-     */
-    public SeatMapResponseDTO findSeatMap(UUID screeningUuid, @Nullable String viewerEmail) {
-        MovieScreening screening = movieScreeningService.getScreening(screeningUuid);
-        Set<UUID> booked = new HashSet<>(ticketRepository.findBookedSeatIds(screeningUuid));
-        UUID viewerUuid = viewerEmail == null ? null : userService.findUuidByEmail(viewerEmail);
-        Set<UUID> held = new HashSet<>(seatHoldService.findHeldSeatIds(screeningUuid, viewerUuid));
-        List<Seat> seats = seatRepository.findByScreenRoomUuid(screening.getScreenRoom().getUuid());
-
-        return SeatMapResponseDTO.of(
-                screening,
-                SeatCoordinateComparator.distinctSorted(seats, seat -> seat.getPosition().row()),
-                SeatCoordinateComparator.distinctSorted(seats, seat -> seat.getPosition().column()),
-                seats.stream()
-                        .map(seat -> SeatAvailabilityResponseDTO.of(
-                                seat,
-                                !booked.contains(seat.getUuid()) && !held.contains(seat.getUuid()),
-                                // Vendida gana sobre bloqueada: un bloqueo que quedó vivo sobre una
-                                // butaca ya vendida no debe mostrarla como «alguien la está comprando».
-                                !booked.contains(seat.getUuid()) && held.contains(seat.getUuid())))
-                        .toList());
     }
 
     private Reservation getReservation(UUID uuid) {

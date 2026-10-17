@@ -7,7 +7,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tp.appsinter.cine.movie.dto.request.MovieRequestDTO;
 import tp.appsinter.cine.movie.dto.response.MovieResponseDTO;
-import tp.appsinter.cine.screening.MovieScreeningRepository;
 import tp.appsinter.cine.shared.dto.response.PageResponseDTO;
 import tp.appsinter.cine.shared.error.BusinessRuleException;
 import tp.appsinter.cine.shared.error.ConflictException;
@@ -24,7 +23,7 @@ import java.util.UUID;
 public class MovieService {
 
     private final MovieRepository movieRepository;
-    private final MovieScreeningRepository movieScreeningRepository;
+    private final MovieScreenings movieScreenings;
 
     private static @Nullable String normalise(@Nullable String search) {
         return search == null || search.isBlank() ? null : search.trim();
@@ -99,7 +98,7 @@ public class MovieService {
             return MovieResponseDTO.from(movie);
         }
         OffsetDateTime now = OffsetDateTime.now();
-        if (archived && movieScreeningRepository.existsByMovieUuidAndArchivedAtIsNullAndEndsAtAfter(uuid, now)) {
+        if (archived && movieScreenings.hasUpcoming(uuid, now)) {
             throw ConflictException.resourceInUse(
                     "Movie %s still has upcoming screenings; archive them first".formatted(uuid),
                     "Movie", "Movie screening");

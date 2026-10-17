@@ -3,24 +3,18 @@ package tp.appsinter.cine.movie;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.jspecify.annotations.Nullable;
 import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Pageable;
-import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import tp.appsinter.cine.movie.dto.request.MovieRequestDTO;
 import tp.appsinter.cine.movie.dto.response.MovieResponseDTO;
-import tp.appsinter.cine.screening.MovieScreeningService;
-import tp.appsinter.cine.screening.dto.response.NowShowingResponseDTO;
 import tp.appsinter.cine.shared.dto.request.ArchiveRequestDTO;
 import tp.appsinter.cine.shared.dto.response.PageResponseDTO;
 import tp.appsinter.cine.shared.web.AllowedSort;
 
 import java.net.URI;
-import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -31,7 +25,6 @@ import java.util.UUID;
 public class MovieController {
 
     private final MovieService movieService;
-    private final MovieScreeningService movieScreeningService;
 
     @PostMapping
     public ResponseEntity<MovieResponseDTO> create(@Valid @RequestBody MovieRequestDTO request) {
@@ -48,24 +41,6 @@ public class MovieController {
             @ParameterObject @AllowedSort({"movieName", "runtime", "releaseYear", "director", "originalLanguage",
                     "certification"}) Pageable pageable) {
         return movieService.findAll(search, genre, releaseYear, includeArchived, pageable);
-    }
-
-    /**
-     * Cartelera agregada: películas vigentes con sus funciones vigentes que empiezan en
-     * {@code [from, to]}, en orden cronológico y con disponibilidad. Reemplaza descargar películas y
-     * funciones por separado y cruzarlas en el cliente.
-     *
-     * @param from desde cuándo; por omisión, ahora
-     * @param to   hasta cuándo; por omisión, sin límite
-     */
-    @GetMapping("/now-showing")
-    public PageResponseDTO<NowShowingResponseDTO> nowShowing(
-            @Nullable Authentication authentication,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime from,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime to,
-            @ParameterObject @AllowedSort({"movieName", "releaseYear"}) Pageable pageable) {
-        return movieScreeningService.nowShowing(from, to,
-                authentication == null ? null : authentication.getName(), pageable);
     }
 
     @GetMapping("/{uuid}")

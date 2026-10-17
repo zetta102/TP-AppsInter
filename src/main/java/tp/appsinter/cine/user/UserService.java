@@ -8,8 +8,6 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import tp.appsinter.cine.auth.RefreshTokenService;
-import tp.appsinter.cine.reservation.ReservationRepository;
 import tp.appsinter.cine.shared.dto.response.PageResponseDTO;
 import tp.appsinter.cine.shared.error.BusinessRuleException;
 import tp.appsinter.cine.shared.error.ConflictException;
@@ -28,8 +26,8 @@ import java.util.UUID;
 public class UserService {
 
     private final UserRepository userRepository;
-    private final ReservationRepository reservationRepository;
-    private final RefreshTokenService refreshTokenService;
+    private final UserReservations userReservations;
+    private final UserSessions userSessions;
     private final PasswordEncoder passwordEncoder;
 
     @Transactional
@@ -99,7 +97,7 @@ public class UserService {
             throw BusinessRuleException.wrongPassword();
         }
         user.setPassword(passwordEncoder.encode(request.newPassword()));
-        refreshTokenService.revokeAllExcept(user, request.refreshToken());
+        userSessions.revokeAllExcept(user, request.refreshToken());
     }
 
     /**
@@ -148,13 +146,13 @@ public class UserService {
         if (user.getRole() == Role.ADMIN && userRepository.countByRoleAndDeletedAtIsNull(Role.ADMIN) <= 1) {
             throw BusinessRuleException.lastAdmin("The system must keep at least one administrator");
         }
-        if (reservationRepository.existsActiveForUser(uuid, OffsetDateTime.now())) {
+        if (userReservations.hasActive(uuid, OffsetDateTime.now())) {
             throw ConflictException.resourceInUse(
                     "User %s still holds reservations for upcoming screenings".formatted(uuid),
                     "User", "Reservation");
         }
         user.setDeletedAt(OffsetDateTime.now());
-        refreshTokenService.revokeAll(user);
+        userSessions.revokeAll(user);
     }
 
     public UserResponseDTO findById(UUID uuid) {

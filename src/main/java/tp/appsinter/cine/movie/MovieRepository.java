@@ -7,7 +7,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
-import tp.appsinter.cine.screening.MovieScreeningRepository;
 
 import java.time.OffsetDateTime;
 import java.util.Collection;
@@ -41,7 +40,7 @@ public interface MovieRepository extends JpaRepository<Movie, UUID> {
 
     /**
      * Películas vigentes con al menos una función vigente que empieza dentro de la ventana. Con
-     * {@code to} nulo la ventana no tiene fin (ver {@link MovieScreeningRepository#search} sobre
+     * {@code to} nulo la ventana no tiene fin (ver {@code MovieScreeningRepository.search} sobre
      * {@code coalesce}).
      */
     @Query("""

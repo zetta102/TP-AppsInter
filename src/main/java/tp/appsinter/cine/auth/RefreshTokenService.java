@@ -8,6 +8,7 @@ import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tp.appsinter.cine.user.User;
+import tp.appsinter.cine.user.UserSessions;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -25,7 +26,7 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 @Slf4j
-public class RefreshTokenService {
+public class RefreshTokenService implements UserSessions {
 
     private static final int TOKEN_BYTES = 48;
 
@@ -113,6 +114,7 @@ public class RefreshTokenService {
                         refreshTokenRepository.revokeFamily(refreshToken.getFamilyId(), OffsetDateTime.now()));
     }
 
+    @Override
     @Transactional
     public void revokeAll(User user) {
         refreshTokenRepository.revokeAllForUser(user.getUuid(), OffsetDateTime.now());
@@ -125,6 +127,7 @@ public class RefreshTokenService {
      * vieja sin echar de paso a quien acaba de cambiarla. Si {@code keep} es nulo o desconocido, se
      * revocan todas.
      */
+    @Override
     @Transactional
     public void revokeAllExcept(User user, @Nullable String keep) {
         OffsetDateTime now = OffsetDateTime.now();

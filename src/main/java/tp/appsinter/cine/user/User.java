@@ -4,11 +4,8 @@ import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.UuidGenerator;
 import org.jspecify.annotations.NullUnmarked;
-import tp.appsinter.cine.reservation.Reservation;
 
-import java.util.ArrayList;
 import java.time.OffsetDateTime;
-import java.util.List;
 import java.util.UUID;
 
 @Entity
@@ -19,7 +16,7 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-@ToString(exclude = {"password", "reservations"})
+@ToString(exclude = "password")
 @EqualsAndHashCode(onlyExplicitlyIncluded = true)
 public class User {
 
@@ -45,10 +42,6 @@ public class User {
     @Column(nullable = false)
     @Builder.Default
     private Role role = Role.CUSTOMER;
-
-    @OneToMany(mappedBy = "user")
-    @Builder.Default
-    private List<Reservation> reservations = new ArrayList<>();
 
     /**
      * Fecha de baja lógica, o {@code null} si la cuenta está activa.

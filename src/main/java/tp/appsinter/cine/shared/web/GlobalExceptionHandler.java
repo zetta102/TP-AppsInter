@@ -23,9 +23,9 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
-import tp.appsinter.cine.auth.RefreshTokenReusedException;
 import tp.appsinter.cine.shared.error.DomainException;
 import tp.appsinter.cine.shared.error.ErrorCode;
+import tp.appsinter.cine.shared.error.HasErrorCode;
 import tp.appsinter.cine.shared.error.Violation;
 
 import java.util.ArrayList;
@@ -175,16 +175,15 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     }
 
     /**
-     * Un token de refresco reutilizado fuera de la ventana de gracia: la familia ya fue revocada y el
-     * cliente tiene que volver a iniciar sesión en lugar de reintentar.
+     * Credenciales rechazadas. Si la excepción trae su propio código —un token de refresco reutilizado
+     * fuera de la ventana de gracia publica {@code TOKEN_REVOKED}, para que el cliente vuelva a iniciar
+     * sesión en lugar de reintentar—, se publica ese código con su mensaje.
      */
-    @ExceptionHandler(RefreshTokenReusedException.class)
-    public ProblemDetail handleRefreshTokenReused(RefreshTokenReusedException exception) {
-        return problem(exception.getMessage(), ErrorCode.TOKEN_REVOKED);
-    }
-
     @ExceptionHandler(AuthenticationException.class)
     public ProblemDetail handleAuthentication(AuthenticationException exception) {
+        if (exception instanceof HasErrorCode coded) {
+            return problem(exception.getMessage(), coded.getCode());
+        }
         return problem("Invalid credentials", ErrorCode.INVALID_CREDENTIALS);
     }
 

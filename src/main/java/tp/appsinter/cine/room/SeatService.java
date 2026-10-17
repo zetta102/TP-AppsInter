@@ -3,7 +3,6 @@ package tp.appsinter.cine.room;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import tp.appsinter.cine.reservation.TicketRepository;
 import tp.appsinter.cine.room.dto.request.BulkSeatsRequestDTO;
 import tp.appsinter.cine.room.dto.request.GenerateSeatsRequestDTO;
 import tp.appsinter.cine.room.dto.request.SeatConflictPolicy;
@@ -30,7 +29,7 @@ import java.util.stream.Collectors;
 public class SeatService {
 
     private final SeatRepository seatRepository;
-    private final TicketRepository ticketRepository;
+    private final SeatTickets seatTickets;
     private final ScreenRoomService screenRoomService;
 
     @Transactional
@@ -227,7 +226,7 @@ public class SeatService {
         Position position = new Position(request.row(), request.column());
         boolean moved = !seat.getScreenRoom().getUuid().equals(room.getUuid())
                 || !seat.getPosition().equals(position);
-        if (moved && ticketRepository.existsBySeatUuid(uuid)) {
+        if (moved && seatTickets.anyFor(uuid)) {
             throw ConflictException.resourceInUse(
                     "Seat %s already appears on tickets; only its type can change".formatted(uuid),
                     "Seat", "Ticket");
