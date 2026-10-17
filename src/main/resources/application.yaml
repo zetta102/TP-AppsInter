@@ -26,7 +26,6 @@ cine:
     # Orígenes del frontend, separados por coma. En producción hay que agregar el dominio
     # desplegado (p. ej. CINE_CORS_ALLOWED_ORIGINS=https://cine.example.com). El encabezado
     # Location de las altas se expone siempre.
-
     allowed-origins: ${CINE_CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:5173}
   admin:
     email: ${CINE_ADMIN_EMAIL:}
