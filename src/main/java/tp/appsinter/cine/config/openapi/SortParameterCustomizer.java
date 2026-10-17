@@ -6,7 +6,7 @@ import org.springdoc.core.customizers.GlobalOperationCustomizer;
 import org.springframework.core.MethodParameter;
 import org.springframework.stereotype.Component;
 import org.springframework.web.method.HandlerMethod;
-import tp.appsinter.cine.controller.AllowedSort;
+import tp.appsinter.cine.shared.web.AllowedSort;
 
 import java.util.ArrayList;
 import java.util.Arrays;

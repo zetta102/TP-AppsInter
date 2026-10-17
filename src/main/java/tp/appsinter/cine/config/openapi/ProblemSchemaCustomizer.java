@@ -9,7 +9,7 @@ import io.swagger.v3.oas.models.responses.ApiResponse;
 import io.swagger.v3.oas.models.responses.ApiResponses;
 import org.springdoc.core.customizers.GlobalOpenApiCustomizer;
 import org.springframework.stereotype.Component;
-import tp.appsinter.cine.exception.ErrorCode;
+import tp.appsinter.cine.shared.error.ErrorCode;
 
 import java.util.Arrays;
 import java.util.LinkedHashMap;
