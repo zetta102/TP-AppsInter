@@ -1,5 +1,5 @@
 /**
- * Configuración de la aplicación: seguridad, propiedades tipadas y arranque.
+ * Configuración transversal de la aplicación: documento OpenAPI y exportación de logs.
  *
  * <p>Los tipos son no nulos salvo que se anoten con {@link org.jspecify.annotations.Nullable}.
  */

@@ -13,7 +13,8 @@ import org.springframework.context.annotation.ClassPathScanningCandidateComponen
 import org.springframework.core.type.filter.AssignableTypeFilter;
 import org.springframework.stereotype.Component;
 import org.springframework.util.ClassUtils;
-import tp.appsinter.cine.model.dto.response.PageResponseDTO;
+import tp.appsinter.cine.CineApplication;
+import tp.appsinter.cine.shared.dto.response.PageResponseDTO;
 
 import java.lang.reflect.RecordComponent;
 import java.util.ArrayList;
@@ -29,13 +30,15 @@ import java.util.Set;
  *
  * <p>springdoc no lee {@code @Nullable} de JSpecify, así que por sí solo marca como obligatorios
  * únicamente los campos con {@code @NotNull}/{@code @NotBlank}, y los tipos generados del lado del
- * cliente quedan todos opcionales. Este paso recorre los registros de {@code model.dto} —cuyos
- * paquetes son {@code @NullMarked}— y, en su esquema:
+ * cliente quedan todos opcionales. Este paso recorre los registros de los paquetes
+ * {@code <funcionalidad>.dto.request} y {@code <funcionalidad>.dto.response} —que son
+ * {@code @NullMarked}— y, en su esquema:
  * <ul>
  *   <li>marca {@code required} todo componente sin {@code @Nullable};</li>
  *   <li>en una respuesta, agrega {@code "null"} al tipo de los anotados con {@code @Nullable}: siempre
  *       viajan, pero pueden valer {@code null};</li>
- *   <li>en una petición ({@code model.dto.request}), deja opcionales los anotados con
+ *   <li>en una petición (un registro de un paquete {@code dto.request}, incluidos los anidados),
+ *       deja opcionales los anotados con
  *       {@code @Nullable}: el cliente puede omitirlos o mandarlos en {@code null};</li>
  *   <li>deja opcional y no nulo un componente con {@code @JsonInclude(NON_NULL)}, que en lugar de
  *       valer {@code null} directamente no se envía.</li>
@@ -44,9 +47,9 @@ import java.util.Set;
 @Component
 public class RecordNullabilityCustomizer implements GlobalOpenApiCustomizer {
 
-    private static final String DTO_PACKAGE = "tp.appsinter.cine.model.dto";
     private static final String NULL_TYPE = "null";
-    private static final String REQUEST_PACKAGE = DTO_PACKAGE + ".request";
+    private static final String REQUEST_PACKAGE_SUFFIX = ".dto.request";
+    private static final String RESPONSE_PACKAGE_SUFFIX = ".dto.response";
 
     private final Map<String, Class<?>> recordsBySchemaName = scanRecords();
 
@@ -59,12 +62,23 @@ public class RecordNullabilityCustomizer implements GlobalOpenApiCustomizer {
         };
         scanner.addIncludeFilter(new AssignableTypeFilter(Record.class));
         Map<String, Class<?>> records = new HashMap<>();
-        for (BeanDefinition definition : scanner.findCandidateComponents(DTO_PACKAGE)) {
+        for (BeanDefinition definition : scanner.findCandidateComponents(CineApplication.class.getPackageName())) {
             Class<?> type = ClassUtils.resolveClassName(Objects.requireNonNull(definition.getBeanClassName()),
                     RecordNullabilityCustomizer.class.getClassLoader());
-            records.put(schemaName(type), type);
+            if (!isRequest(type) && !type.getPackageName().endsWith(RESPONSE_PACKAGE_SUFFIX)) {
+                continue;
+            }
+            Class<?> previous = records.put(schemaName(type), type);
+            if (previous != null) {
+                throw new IllegalStateException("%s y %s publican el mismo esquema %s"
+                        .formatted(previous.getName(), type.getName(), schemaName(type)));
+            }
         }
         return Map.copyOf(records);
+    }
+
+    private static boolean isRequest(Class<?> type) {
+        return type.getPackageName().endsWith(REQUEST_PACKAGE_SUFFIX);
     }
 
     static String schemaName(Class<?> type) {
@@ -96,7 +110,7 @@ public class RecordNullabilityCustomizer implements GlobalOpenApiCustomizer {
         if (properties == null) {
             return;
         }
-        boolean request = type.getPackageName().equals(REQUEST_PACKAGE);
+        boolean request = isRequest(type);
         Set<String> required = new LinkedHashSet<>(schema.getRequired() == null ? List.of() : schema.getRequired());
         for (RecordComponent component : type.getRecordComponents()) {
             if (component.isAnnotationPresent(JsonIgnore.class)) {
