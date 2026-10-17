@@ -2,7 +2,6 @@ package tp.appsinter.cine;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
 import org.springframework.resilience.annotation.EnableResilientMethods;
 import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.scheduling.annotation.EnableScheduling;
@@ -22,7 +21,6 @@ import org.springframework.scheduling.annotation.EnableScheduling;
  * creara un proxy propio por debajo del transaccional.
  */
 @SpringBootApplication
-@ConfigurationPropertiesScan
 @EnableScheduling
 @EnableAsync
 @EnableResilientMethods
