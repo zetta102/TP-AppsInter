@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.context.request.WebRequest;
+import tp.appsinter.cine.contact.ContactCategory;
 import tp.appsinter.cine.hold.SeatHoldProperties;
 import tp.appsinter.cine.inventory.ProductCategory;
 import tp.appsinter.cine.metadata.dto.response.EnumValueResponseDTO;
@@ -67,6 +68,7 @@ public class MetadataController {
         body.put("seatType", describe(SeatType.values(), SeatType::getSeatName));
         body.put("productCategory", describe(ProductCategory.values(), ProductCategory::getDisplayName));
         body.put("reservationStatus", describe(ReservationStatus.values(), ReservationStatus::getDisplayName));
+        body.put("contactCategory", describe(ContactCategory.values(), ContactCategory::getDisplayName));
         return conditional(request, body, body.toString());
     }
 

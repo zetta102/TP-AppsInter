@@ -69,6 +69,9 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/users/me/password").authenticated()
                         .requestMatchers("/api/users/**").hasRole(ADMIN)
                         .requestMatchers(HttpMethod.GET, "/api/reservations/all").hasRole(ADMIN)
+                        .requestMatchers("/api/admin/**").hasRole(ADMIN)
+                        // Cualquier cuenta puede escribir al cine y gestionar sus propios mensajes.
+                        .requestMatchers("/api/contact-messages/**").authenticated()
                         .anyRequest().authenticated())
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
                 .exceptionHandling(handling -> handling

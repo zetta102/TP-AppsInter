@@ -133,6 +133,12 @@ public enum ErrorCode {
     RESOURCE_ARCHIVED(HttpStatus.UNPROCESSABLE_CONTENT),
 
     /**
+     * Extensión. El mensaje de contacto ya fue leído por administración y su autor no puede
+     * modificarlo.
+     */
+    MESSAGE_ALREADY_READ(HttpStatus.UNPROCESSABLE_CONTENT),
+
+    /**
      * Extensión. El recurso existe pero no admite el método HTTP pedido.
      */
     METHOD_NOT_ALLOWED(HttpStatus.METHOD_NOT_ALLOWED),

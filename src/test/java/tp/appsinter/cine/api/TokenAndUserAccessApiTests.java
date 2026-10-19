@@ -229,6 +229,12 @@ class TokenAndUserAccessApiTests {
                 GET,  /api/inventory,        ADMIN,    200
                 GET,  /api/users,            ADMIN,    200
                 GET,  /api/reservations/all, ADMIN,    200
+                GET,  /api/contact-messages,       NONE,     401
+                GET,  /api/admin/contact-messages, NONE,     401
+                GET,  /api/contact-messages,       CUSTOMER, 200
+                GET,  /api/admin/contact-messages, CUSTOMER, 403
+                GET,  /api/contact-messages,       ADMIN,    200
+                GET,  /api/admin/contact-messages, ADMIN,    200
                 """)
         void enforcesRules(HttpMethod method, String path, Caller caller, int expectedStatus) {
             var request = mvc.method(method).uri(path);

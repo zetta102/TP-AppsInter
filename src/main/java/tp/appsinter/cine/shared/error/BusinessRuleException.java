@@ -68,6 +68,14 @@ public final class BusinessRuleException extends DomainException {
     }
 
     /**
+     * El mensaje de contacto ya fue leído por administración y quedó fijo.
+     */
+    public static BusinessRuleException messageAlreadyRead(UUID messageId) {
+        return new BusinessRuleException("Contact message %s has already been read".formatted(messageId),
+                ErrorCode.MESSAGE_ALREADY_READ, Map.of());
+    }
+
+    /**
      * El cambio de rol dejaría el sistema sin administradores.
      */
     public static BusinessRuleException lastAdmin(String message) {
