@@ -1,77 +1,83 @@
--- Datos de demostración.
---
--- La base nacía vacía y el frontend no tenía nada que mostrar hasta cargar a mano películas, salas,
--- butacas y funciones. Esta semilla deja un catálogo chico pero realista en todas las tablas.
+-- Datos de demostración: un catálogo chico pero realista en todas las tablas, para que el frontend
+-- tenga qué mostrar desde el primer arranque.
 --
 -- - Usuarios: sólo clientes, todos con la contraseña «Password123!». No se siembra administrador:
---   sigue saliendo de CINE_ADMIN_EMAIL/CINE_ADMIN_PASSWORD (AdminBootstrapRunner).
+--   sale de CINE_ADMIN_EMAIL/CINE_ADMIN_PASSWORD (AdminBootstrapRunner).
 -- - Las funciones se ubican relativas al momento de la migración: desde tres días antes hasta trece
 --   después, en UTC.
 -- - Los importes siguen las mismas reglas que la aplicación: recargo premium de 1,50, fin de función
 --   = inicio + duración + 15 minutos de limpieza, cancelación que deja total_price en cero.
 -- - Las filas raíz usan UUID fijos y legibles (…0001xx usuarios, …0002xx películas, …0003xx salas,
---   …0004xx productos) para poder nombrarlas en la documentación.
+--   …0004xx productos, …0005xx tokens, …0006xx bloqueos) para poder nombrarlas en la documentación.
+-- - Las tablas auxiliares son temporales y desaparecen al confirmar la migración.
 
+-- crypt, gen_salt y gen_random_bytes.
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 -- Usuarios ------------------------------------------------------------------------------------------
 
-INSERT INTO app_user (uuid, first_name, last_name, email, password, role, deleted_at)
-VALUES ('00000000-0000-4000-8000-000000000101', 'Ana', 'García', 'ana.garcia@cine.example',
-        crypt('Password123!', gen_salt('bf', 10)), 'CUSTOMER', NULL),
-       ('00000000-0000-4000-8000-000000000102', 'Bruno', 'Fernández', 'bruno.fernandez@cine.example',
-        crypt('Password123!', gen_salt('bf', 10)), 'CUSTOMER', NULL),
-       ('00000000-0000-4000-8000-000000000103', 'Carla', 'López', 'carla.lopez@cine.example',
-        crypt('Password123!', gen_salt('bf', 10)), 'CUSTOMER', NULL),
-       ('00000000-0000-4000-8000-000000000104', 'Diego', 'Martínez', 'diego.martinez@cine.example',
-        crypt('Password123!', gen_salt('bf', 10)), 'CUSTOMER', NULL),
-       ('00000000-0000-4000-8000-000000000105', 'Elena', 'Sosa', 'elena.sosa@cine.example',
-        crypt('Password123!', gen_salt('bf', 10)), 'CUSTOMER', NULL),
-       -- Dado de baja: conserva su historial pero no puede iniciar sesión.
-       ('00000000-0000-4000-8000-000000000106', 'Federico', 'Romero', 'federico.romero@cine.example',
-        crypt('Password123!', gen_salt('bf', 10)), 'CUSTOMER', now() - INTERVAL '20 days');
+-- bcrypt es caro a propósito: se calcula una sola vez y todos comparten el hash.
+WITH demo_password AS MATERIALIZED (SELECT crypt('Password123!', gen_salt('bf', 10)) AS hash)
+INSERT INTO app_user (uuid, first_name, last_name, email, password, role)
+SELECT u.uuid, u.first_name, u.last_name, u.email, demo_password.hash, 'CUSTOMER'
+FROM (VALUES ('00000000-0000-4000-8000-000000000101'::uuid, 'Ana', 'García', 'ana.garcia@cine.example'),
+             ('00000000-0000-4000-8000-000000000102'::uuid, 'Bruno', 'Fernández', 'bruno.fernandez@cine.example'),
+             ('00000000-0000-4000-8000-000000000103'::uuid, 'Carla', 'López', 'carla.lopez@cine.example'),
+             ('00000000-0000-4000-8000-000000000104'::uuid, 'Diego', 'Martínez', 'diego.martinez@cine.example'),
+             ('00000000-0000-4000-8000-000000000105'::uuid, 'Elena', 'Sosa', 'elena.sosa@cine.example'),
+             ('00000000-0000-4000-8000-000000000106'::uuid, 'Federico', 'Romero', 'federico.romero@cine.example'))
+         AS u (uuid, first_name, last_name, email)
+         CROSS JOIN demo_password;
+
+-- Dado de baja: conserva su historial pero no puede iniciar sesión.
+UPDATE app_user
+SET deleted_at = now() - INTERVAL '20 days'
+WHERE uuid = '00000000-0000-4000-8000-000000000106';
 
 -- Películas -----------------------------------------------------------------------------------------
 
-INSERT INTO movie (uuid, movie_name, runtime, description, director, release_year, certification,
-                   original_language, archived_at)
+INSERT INTO movie (uuid, movie_name, runtime, description, director, release_year, certification, original_language)
 VALUES ('00000000-0000-4000-8000-000000000201', 'The Matrix', 136,
         'Un hacker descubre que el mundo en el que vive es una simulación y se une a la rebelión contra sus máquinas.',
-        'Lana Wachowski, Lilly Wachowski', 1999, 'R', 'en', NULL),
+        'Lana Wachowski, Lilly Wachowski', 1999, 'R', 'en'),
        ('00000000-0000-4000-8000-000000000202', 'Spirited Away', 125,
         'Una niña se adentra en un mundo de espíritus y debe trabajar en una casa de baños para liberar a sus padres.',
-        'Hayao Miyazaki', 2001, 'PG', 'ja', NULL),
+        'Hayao Miyazaki', 2001, 'PG', 'ja'),
        ('00000000-0000-4000-8000-000000000203', 'Pulp Fiction', 154,
         'Las vidas de dos sicarios, un boxeador y la esposa de un gánster se entrecruzan en cuatro historias de violencia y redención.',
-        'Quentin Tarantino', 1994, 'R', 'en', NULL),
+        'Quentin Tarantino', 1994, 'R', 'en'),
        ('00000000-0000-4000-8000-000000000204', 'Amélie', 122,
         'Una tímida camarera de Montmartre decide cambiar en secreto la vida de quienes la rodean.',
-        'Jean-Pierre Jeunet', 2001, 'R', 'fr', NULL),
+        'Jean-Pierre Jeunet', 2001, 'R', 'fr'),
        ('00000000-0000-4000-8000-000000000205', 'El laberinto del fauno', 118,
         'En la España de 1944, una niña huye de su cruel padrastro hacia un mundo fantástico, misterioso y peligroso.',
-        'Guillermo del Toro', 2006, 'R', 'es', NULL),
+        'Guillermo del Toro', 2006, 'R', 'es'),
        ('00000000-0000-4000-8000-000000000206', 'Inception', 148,
         'A un ladrón que roba secretos a través de los sueños le ofrecen, en cambio, implantar una idea.',
-        'Christopher Nolan', 2010, 'PG-13', 'en', NULL),
+        'Christopher Nolan', 2010, 'PG-13', 'en'),
        ('00000000-0000-4000-8000-000000000207', 'Toy Story', 81,
         'Un muñeco vaquero se siente amenazado cuando un nuevo juguete, un guardián espacial, se convierte en el favorito de su dueño.',
-        'John Lasseter', 1995, 'G', 'en', NULL),
+        'John Lasseter', 1995, 'G', 'en'),
        ('00000000-0000-4000-8000-000000000208', 'The Shining', 146,
         'Un escritor acepta cuidar durante el invierno un hotel aislado, donde lo espera una presencia siniestra.',
-        'Stanley Kubrick', 1980, 'R', 'en', NULL),
+        'Stanley Kubrick', 1980, 'R', 'en'),
        ('00000000-0000-4000-8000-000000000209', 'Parasite', 132,
         'Una familia pobre se las ingenia para conseguir trabajo en la casa de una familia adinerada, con resultados inesperados.',
-        'Bong Joon-ho', 2019, 'R', 'ko', NULL),
+        'Bong Joon-ho', 2019, 'R', 'ko'),
        ('00000000-0000-4000-8000-000000000210', 'Mad Max: Fury Road', 120,
         'En un páramo postapocalíptico, un vagabundo y una guerrera rebelde huyen de un tirano a través del desierto.',
-        'George Miller', 2015, 'R', 'en', NULL),
+        'George Miller', 2015, 'R', 'en'),
        ('00000000-0000-4000-8000-000000000211', 'La La Land', 128,
         'Un pianista de jazz y una aspirante a actriz se enamoran mientras persiguen sus sueños en Los Ángeles.',
-        'Damien Chazelle', 2016, 'PG-13', 'en', NULL),
-       -- Archivada: no tiene funciones y sólo aparece con includeArchived=true.
+        'Damien Chazelle', 2016, 'PG-13', 'en'),
        ('00000000-0000-4000-8000-000000000212', 'El secreto de sus ojos', 129,
         'Un investigador judicial retirado escribe una novela sobre un asesinato sin resolver que todavía lo atormenta.',
-        'Juan José Campanella', 2009, 'R', 'es', now() - INTERVAL '10 days');
+        'Juan José Campanella', 2009, 'R', 'es');
+
+-- Archivada: no tiene funciones y sólo aparece con includeArchived=true.
+UPDATE movie
+SET archived_at = now() - INTERVAL '10 days'
+WHERE uuid = '00000000-0000-4000-8000-000000000212';
 
 INSERT INTO movie_genre (movie_id, genre)
 VALUES ('00000000-0000-4000-8000-000000000201', 'ACTION'),
@@ -156,7 +162,7 @@ FROM (VALUES ('00000000-0000-4000-8000-000000000301'::uuid, 8, 12),
 
 -- Cuatro turnos diarios por sala, separados 195 minutos: alcanza para la película más larga del
 -- catálogo (154) más los 15 de limpieza. Las películas rotan por sala, día y turno.
-CREATE TEMPORARY TABLE seed_slot AS
+CREATE TEMPORARY TABLE seed_slot ON COMMIT DROP AS
 SELECT d AS day_offset,
        s AS slot,
        date_trunc('day', now()) + d * INTERVAL '1 day' + INTERVAL '13 hours' + s * INTERVAL '195 minutes' AS starts_at
@@ -194,7 +200,7 @@ CREATE TEMPORARY TABLE seed_reservation
     first_col  INTEGER NOT NULL,
     seat_count INTEGER NOT NULL,
     cancelled  BOOLEAN NOT NULL
-);
+) ON COMMIT DROP;
 
 INSERT INTO seed_reservation (n, user_id, day_offset, room_id, slot, seat_row, first_col, seat_count, cancelled)
 VALUES (1, '00000000-0000-4000-8000-000000000101', -3, '00000000-0000-4000-8000-000000000301', 2, 'D', 5, 2, FALSE),
@@ -219,14 +225,13 @@ VALUES (1, '00000000-0000-4000-8000-000000000101', -3, '00000000-0000-4000-8000-
        (20, '00000000-0000-4000-8000-000000000103', 10, '00000000-0000-4000-8000-000000000304', 3, 'H', 1, 3, FALSE);
 
 -- El total se calcula más abajo, una vez cargadas entradas y confitería.
-INSERT INTO reservation (uuid, user_id, movie_screening_id, status, total_price, created_at, version)
+INSERT INTO reservation (uuid, user_id, movie_screening_id, status, total_price, created_at)
 SELECT sr.uuid,
        sr.user_id,
        ms.uuid,
        'CONFIRMED',
        0,
-       least(now() - sr.n * INTERVAL '1 hour', ms.starts_at - INTERVAL '3 hours'),
-       0
+       least(now() - sr.n * INTERVAL '1 hour', ms.starts_at - INTERVAL '3 hours')
 FROM seed_reservation sr
          JOIN seed_slot slot ON slot.day_offset = sr.day_offset AND slot.slot = sr.slot
          JOIN movie_screening ms ON ms.screen_room_id = sr.room_id AND ms.starts_at = slot.starts_at;
@@ -256,7 +261,7 @@ CREATE TEMPORARY TABLE seed_product
     cost          DECIMAL(10, 2) NOT NULL,
     initial_stock INTEGER        NOT NULL,
     archived      BOOLEAN        NOT NULL
-);
+) ON COMMIT DROP;
 
 INSERT INTO seed_product (uuid, product_name, category, cost, initial_stock, archived)
 VALUES ('00000000-0000-4000-8000-000000000401', 'Pochoclos chicos', 'SNACK', 4.50, 200, FALSE),
@@ -276,13 +281,12 @@ VALUES ('00000000-0000-4000-8000-000000000401', 'Pochoclos chicos', 'SNACK', 4.5
        -- Archivado: fuera de la góndola, pero visible con includeArchived=true.
        ('00000000-0000-4000-8000-000000000415', 'Combo de temporada', 'COMBO', 11.00, 10, TRUE);
 
-INSERT INTO inventory (uuid, product_name, category, cost, quantity, version, archived_at)
+INSERT INTO inventory (uuid, product_name, category, cost, quantity, archived_at)
 SELECT uuid,
        product_name,
        category,
        cost,
        initial_stock,
-       0,
        CASE WHEN archived THEN now() - INTERVAL '5 days' END
 FROM seed_product;
 
@@ -297,7 +301,7 @@ CREATE TEMPORARY TABLE seed_adjustment
     delta        INTEGER NOT NULL,
     reason       TEXT    NOT NULL,
     days_ago     INTEGER NOT NULL
-);
+) ON COMMIT DROP;
 
 INSERT INTO seed_adjustment (inventory_id, delta, reason, days_ago)
 VALUES ('00000000-0000-4000-8000-000000000403', -5, 'Mercadería vencida', 12),
@@ -326,7 +330,7 @@ CREATE TEMPORARY TABLE seed_item
     n            INTEGER NOT NULL,
     inventory_id UUID    NOT NULL,
     quantity     INTEGER NOT NULL
-);
+) ON COMMIT DROP;
 
 INSERT INTO seed_item (n, inventory_id, quantity)
 VALUES (1, '00000000-0000-4000-8000-000000000410', 1),
@@ -397,23 +401,19 @@ WHERE r.uuid = t.reservation_id
 
 -- Historial inutilizable: sólo se guarda el hash de un valor aleatorio que nadie conoce. Uno vencido,
 -- uno revocado y una familia rotada cuyo sucesor se cerró al salir.
-INSERT INTO refresh_token (uuid, user_id, token_hash, expires_at, revoked_at, rotated_at, family_id, created_at)
+INSERT INTO refresh_token (uuid, user_id, family_id, token_hash, created_at, expires_at, rotated_at, revoked_at)
 VALUES ('00000000-0000-4000-8000-000000000501', '00000000-0000-4000-8000-000000000101',
-        encode(sha256(gen_random_bytes(32)), 'hex'),
-        now() - INTERVAL '10 days', NULL, NULL,
-        '00000000-0000-4000-8000-000000000501', now() - INTERVAL '40 days'),
+        '00000000-0000-4000-8000-000000000501', encode(sha256(gen_random_bytes(32)), 'hex'),
+        now() - INTERVAL '40 days', now() - INTERVAL '10 days', NULL, NULL),
        ('00000000-0000-4000-8000-000000000502', '00000000-0000-4000-8000-000000000102',
-        encode(sha256(gen_random_bytes(32)), 'hex'),
-        now() + INTERVAL '25 days', now() - INTERVAL '4 days', NULL,
-        '00000000-0000-4000-8000-000000000502', now() - INTERVAL '5 days'),
+        '00000000-0000-4000-8000-000000000502', encode(sha256(gen_random_bytes(32)), 'hex'),
+        now() - INTERVAL '5 days', now() + INTERVAL '25 days', NULL, now() - INTERVAL '4 days'),
        ('00000000-0000-4000-8000-000000000503', '00000000-0000-4000-8000-000000000103',
-        encode(sha256(gen_random_bytes(32)), 'hex'),
-        now() + INTERVAL '27 days', NULL, now() - INTERVAL '2 days',
-        '00000000-0000-4000-8000-000000000503', now() - INTERVAL '3 days'),
+        '00000000-0000-4000-8000-000000000503', encode(sha256(gen_random_bytes(32)), 'hex'),
+        now() - INTERVAL '3 days', now() + INTERVAL '27 days', now() - INTERVAL '2 days', NULL),
        ('00000000-0000-4000-8000-000000000504', '00000000-0000-4000-8000-000000000103',
-        encode(sha256(gen_random_bytes(32)), 'hex'),
-        now() + INTERVAL '28 days', now() - INTERVAL '1 day', NULL,
-        '00000000-0000-4000-8000-000000000503', now() - INTERVAL '2 days');
+        '00000000-0000-4000-8000-000000000503', encode(sha256(gen_random_bytes(32)), 'hex'),
+        now() - INTERVAL '2 days', now() + INTERVAL '28 days', NULL, now() - INTERVAL '1 day');
 
 -- Bloqueos de butacas -------------------------------------------------------------------------------
 
@@ -429,7 +429,7 @@ CREATE TEMPORARY TABLE seed_hold
     seat_row   TEXT    NOT NULL,
     columns    TEXT[]  NOT NULL,
     released   BOOLEAN NOT NULL
-);
+) ON COMMIT DROP;
 
 INSERT INTO seed_hold (uuid, user_id, day_offset, room_id, slot, seat_row, columns, released)
 VALUES ('00000000-0000-4000-8000-000000000601', '00000000-0000-4000-8000-000000000102', 2,
@@ -455,5 +455,3 @@ FROM seed_hold h
          JOIN seat ON seat.screen_room_id = h.room_id
     AND seat.seat_row = h.seat_row
     AND seat.seat_column = c;
-
-DROP TABLE seed_slot, seed_reservation, seed_product, seed_adjustment, seed_item, seed_hold;

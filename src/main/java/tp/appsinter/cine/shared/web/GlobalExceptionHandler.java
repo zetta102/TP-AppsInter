@@ -59,7 +59,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     private static final Pattern UNKNOWN_ATTRIBUTE = Pattern.compile("attribute '([^']+)'");
 
     /**
-     * Restricciones con traducción propia (ver {@code V11__integrity_hardening.sql}).
+     * Restricciones con traducción propia (ver {@code V1__schema.sql}).
      */
     private static final String EMAIL_CONSTRAINT = "uk_app_user_email_lower";
     private static final String SCREENING_OVERLAP_CONSTRAINT = "ex_movie_screening_room_overlap";
