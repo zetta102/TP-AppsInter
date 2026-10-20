@@ -1,9 +1,9 @@
 package tp.appsinter.cine.screening;
 
 import jakarta.annotation.PreDestroy;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -11,16 +11,14 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.event.TransactionalEventListener;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import tp.appsinter.cine.screening.dto.response.SeatStateResponseDTO;
-import tp.appsinter.cine.user.UserService;
 
 import java.io.IOException;
-import java.time.Duration;
+import java.time.Clock;
 import java.time.OffsetDateTime;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -38,29 +36,18 @@ import java.util.concurrent.ConcurrentHashMap;
  * bus compartido.
  */
 @Service
+@RequiredArgsConstructor
 @Slf4j
 public class SeatStreamService {
 
     static final String SEATS_EVENT = "seats";
 
     private final MovieScreeningService movieScreeningService;
-    private final UserService userService;
     private final SoldSeats soldSeats;
     private final HeldSeats heldSeats;
-    private final Duration timeout;
+    private final SeatStreamProperties properties;
+    private final Clock clock;
     private final Map<UUID, Set<Subscriber>> subscribers = new ConcurrentHashMap<>();
-
-    public SeatStreamService(MovieScreeningService movieScreeningService,
-                             UserService userService,
-                             SoldSeats soldSeats,
-                             HeldSeats heldSeats,
-                             @Value("${cine.seat-stream.timeout:PT30M}") Duration timeout) {
-        this.movieScreeningService = movieScreeningService;
-        this.userService = userService;
-        this.soldSeats = soldSeats;
-        this.heldSeats = heldSeats;
-        this.timeout = timeout;
-    }
 
     /**
      * Abre un canal para la función. Falla con {@code 404} antes de abrirlo si la función no existe.
@@ -69,19 +56,15 @@ public class SeatStreamService {
      */
     public SseEmitter subscribe(UUID screeningUuid, @Nullable String viewerEmail) {
         movieScreeningService.getScreening(screeningUuid);
-        UUID viewerUuid = viewerEmail == null ? null : userService.findUuidByEmail(viewerEmail);
+        UUID viewerUuid = movieScreeningService.viewerUuid(viewerEmail);
 
-        SseEmitter emitter = new SseEmitter(timeout.toMillis());
-        Subscriber subscriber = new Subscriber(emitter, viewerUuid);
-        subscribers.compute(screeningUuid, (key, current) -> {
-            Set<Subscriber> set = current != null ? current : ConcurrentHashMap.newKeySet();
-            set.add(subscriber);
-            return set;
-        });
+        SseEmitter emitter = new SseEmitter(properties.timeout().toMillis());
+        Subscriber subscriber = new Subscriber(emitter, new Viewer(viewerUuid));
+        subscribers.computeIfAbsent(screeningUuid, _ -> ConcurrentHashMap.newKeySet()).add(subscriber);
         Runnable remove = () -> unsubscribe(screeningUuid, subscriber);
         emitter.onCompletion(remove);
         emitter.onTimeout(remove);
-        emitter.onError(error -> remove.run());
+        emitter.onError(_ -> remove.run());
         // Un primer comentario hace que los encabezados salgan ya y el cliente sepa que está conectado.
         send(screeningUuid, subscriber, SseEmitter.event().comment("connected"));
         return emitter;
@@ -98,6 +81,9 @@ public class SeatStreamService {
     /**
      * Calcula el estado nuevo de las butacas una vez por cada quien mira distinto —todos los
      * anónimos comparten el mismo— y se lo envía a cada suscriptor de la función.
+     *
+     * <p>Se atiende después de que la transacción que publicó el evento confirma; si el evento se
+     * publicó fuera de una transacción, se atiende igual ({@code fallbackExecution}).
      */
     @Async
     @TransactionalEventListener(fallbackExecution = true)
@@ -108,14 +94,14 @@ public class SeatStreamService {
         }
         UUID screeningUuid = event.screeningId();
         List<UUID> seatIds = List.copyOf(event.seatIds());
-        OffsetDateTime now = OffsetDateTime.now();
+        OffsetDateTime now = OffsetDateTime.now(clock);
         Set<UUID> booked = new HashSet<>(soldSeats.findIdsAmong(screeningUuid, seatIds));
 
-        Map<Optional<UUID>, List<SeatStateResponseDTO>> byViewer = new HashMap<>();
+        Map<Viewer, List<SeatStateResponseDTO>> byViewer = new HashMap<>();
         for (Subscriber subscriber : listening) {
             List<SeatStateResponseDTO> states = byViewer.computeIfAbsent(
-                    Optional.ofNullable(subscriber.viewerUuid()),
-                    viewer -> statesFor(screeningUuid, seatIds, booked, viewer.orElse(null), now));
+                    subscriber.viewer(),
+                    viewer -> statesFor(screeningUuid, seatIds, booked, viewer.uuid(), now));
             send(screeningUuid, subscriber,
                     SseEmitter.event().name(SEATS_EVENT).data(states, MediaType.APPLICATION_JSON));
         }
@@ -141,7 +127,7 @@ public class SeatStreamService {
      * Comentario periódico para que proxies y balanceadores no corten una conexión inactiva, y para
      * descubrir y soltar las que el cliente ya cerró.
      */
-    @Scheduled(fixedDelayString = "${cine.seat-stream.heartbeat:PT25S}")
+    @Scheduled(fixedDelayString = "${cine.seat-stream.heartbeat}")
     public void heartbeat() {
         subscribers.forEach((screeningUuid, set) ->
                 set.forEach(subscriber -> send(screeningUuid, subscriber, SseEmitter.event().comment("keep-alive"))));
@@ -163,15 +149,21 @@ public class SeatStreamService {
     }
 
     private void unsubscribe(UUID screeningUuid, Subscriber subscriber) {
-        subscribers.computeIfPresent(screeningUuid, (key, set) -> {
+        subscribers.computeIfPresent(screeningUuid, (_, set) -> {
             set.remove(subscriber);
             return set.isEmpty() ? null : set;
         });
     }
 
     /**
+     * Quien mira, como clave de agrupación: todos los anónimos son el mismo espectador.
+     */
+    private record Viewer(@Nullable UUID uuid) {
+    }
+
+    /**
      * Un canal abierto. La igualdad es la del emisor, que no redefine {@code equals}.
      */
-    private record Subscriber(SseEmitter emitter, @Nullable UUID viewerUuid) {
+    private record Subscriber(SseEmitter emitter, Viewer viewer) {
     }
 }

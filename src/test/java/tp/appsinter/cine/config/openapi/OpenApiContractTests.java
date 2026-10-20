@@ -5,14 +5,11 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.context.annotation.Import;
 import org.springframework.test.json.JsonContent;
 import org.springframework.test.web.servlet.assertj.MockMvcTester;
 import org.springframework.test.web.servlet.assertj.MvcTestResult;
-import tp.appsinter.cine.PostgresTestcontainersConfiguration;
 import tp.appsinter.cine.shared.error.ErrorCode;
+import tp.appsinter.cine.support.ApiIntegrationTest;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -30,9 +27,7 @@ import static org.assertj.core.api.InstanceOfAssertFactories.LIST;
  * <p>Deja una copia en {@code target/api-docs.json} para poder inspeccionarla o generar los tipos
  * sin levantar la aplicación.
  */
-@SpringBootTest
-@AutoConfigureMockMvc
-@Import(PostgresTestcontainersConfiguration.class)
+@ApiIntegrationTest
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @DisplayName("OpenAPI contract")
 class OpenApiContractTests {
@@ -121,6 +116,20 @@ class OpenApiContractTests {
                         .filteredOn(name -> name.contains("DTO"))
                         // Los sobres de paginación son genéricos: springdoc arma su nombre con el de la clase.
                         .allMatch(name -> name.startsWith("PageResponseDTO")));
+    }
+
+    @Test
+    @DisplayName("marks the token as optional on public operations and required elsewhere")
+    void securityRequirements() {
+        for (String operation : new String[]{"['/api/movies'].get", "['/api/auth/login'].post",
+                "['/api/screenings/{uuid}/seats'].get"}) {
+            assertThat(docs).extractingPath("$.paths" + operation + ".security[0]").asMap().isEmpty();
+            assertThat(docs).extractingPath("$.paths" + operation + ".security[1]").asMap().containsKey("bearerAuth");
+        }
+        // Sin requisito propio, la operación hereda el global: token obligatorio.
+        assertThat(docs).doesNotHavePath("$.paths['/api/movies'].post.security");
+        assertThat(docs).doesNotHavePath("$.paths['/api/reservations'].get.security");
+        assertThat(docs).extractingPath("$.security[0]").asMap().containsKey("bearerAuth");
     }
 
     @Test

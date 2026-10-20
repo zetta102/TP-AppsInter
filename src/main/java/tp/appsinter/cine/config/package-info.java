@@ -1,5 +1,5 @@
 /**
- * Configuración transversal de la aplicación: documento OpenAPI y exportación de logs.
+ * Configuración transversal de la aplicación: reloj, documento OpenAPI y exportación de logs.
  *
  * <p>Los tipos son no nulos salvo que se anoten con {@link org.jspecify.annotations.Nullable}.
  */

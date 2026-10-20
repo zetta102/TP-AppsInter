@@ -5,14 +5,15 @@ import org.springframework.http.HttpStatus;
 /**
  * Registro estable de códigos de error de la API.
  *
- * <p>El valor del código nunca se traduce: es la única parte de una respuesta {@code problem+json}
- * sobre la que un cliente puede ramificar con seguridad. El campo {@code detail} sigue siendo texto
- * humano y localizable, y por lo tanto no debe usarse para tomar decisiones.
+ * <p>El valor del código nunca cambia: es la única parte de una respuesta {@code problem+json}
+ * sobre la que un cliente puede ramificar con seguridad. El campo {@code detail} es texto en inglés
+ * para personas, puede reformularse en cualquier momento y no debe usarse para tomar decisiones.
  */
 public enum ErrorCode {
 
     /**
-     * Falló la validación de Bean Validation. El contexto viaja en la propiedad {@code errors}.
+     * Un campo del pedido es inválido, sea por Bean Validation o por una regla del servicio que
+     * depende del estado. Siempre viaja con las propiedades {@code errors} y {@code violations}.
      */
     VALIDATION_FAILED(HttpStatus.BAD_REQUEST),
 
@@ -60,8 +61,7 @@ public enum ErrorCode {
      * No hay stock suficiente del producto solicitado.
      *
      * <p>Se publica como {@code 422}, no como {@code 409}: el pedido no es reintentable sin
-     * modificarlo, a diferencia de un conflicto de butacas. Esto conserva la cadena de validación
-     * documentada en {@code frontend-spec.md} §9.
+     * modificarlo, a diferencia de un conflicto de butacas.
      */
     INSUFFICIENT_STOCK(HttpStatus.UNPROCESSABLE_CONTENT),
 
@@ -71,7 +71,9 @@ public enum ErrorCode {
     SCREENING_OVERLAP(HttpStatus.CONFLICT),
 
     /**
-     * El borrado está bloqueado porque otros registros referencian el recurso.
+     * La operación está bloqueada porque otros registros dependen del recurso: borrar o archivar
+     * algo con historial o con funciones próximas, mover una butaca que ya se vendió o reprogramar
+     * una función con entradas.
      */
     RESOURCE_IN_USE(HttpStatus.CONFLICT),
 
@@ -90,15 +92,16 @@ public enum ErrorCode {
      */
     ALREADY_CANCELLED(HttpStatus.UNPROCESSABLE_CONTENT),
 
-    // --- Extensiones al registro mínimo de backend-spec.md §8 ---
+    // --- Códigos adicionales ---
 
     /**
-     * Petición mal formada que no proviene de Bean Validation.
+     * Petición mal formada que no se puede atribuir a un campo: un cuerpo ilegible, un parámetro
+     * de tipo incorrecto, un valor que no entra en su columna.
      */
     BAD_REQUEST(HttpStatus.BAD_REQUEST),
 
     /**
-     * El parámetro {@code sort} nombra una propiedad que la entidad no tiene.
+     * El parámetro {@code sort} nombra una propiedad que el listado no publica como ordenable.
      */
     INVALID_SORT_PROPERTY(HttpStatus.BAD_REQUEST),
 
@@ -113,19 +116,20 @@ public enum ErrorCode {
     SEATS_WRONG_ROOM(HttpStatus.UNPROCESSABLE_CONTENT),
 
     /**
-     * Extensión. El cambio de rol dejaría al sistema sin ningún administrador, o un administrador
-     * intenta quitarse a sí mismo el rol. En ambos casos el sistema quedaría sin quien lo administre.
+     * El cambio de rol o la baja dejaría al sistema sin ningún administrador, o un administrador
+     * intenta quitarse a sí mismo el rol o darse de baja. En todos los casos el sistema podría quedar
+     * sin quien lo administre.
      */
     LAST_ADMIN(HttpStatus.UNPROCESSABLE_CONTENT),
 
     /**
-     * Extensión. La contraseña vigente no coincide al intentar cambiarla. No es un {@code 401}: la
+     * La contraseña vigente no coincide al intentar cambiarla. No es un {@code 401}: la
      * sesión sigue siendo válida y el cliente no debe tratarlo como un cierre de sesión.
      */
     WRONG_PASSWORD(HttpStatus.UNPROCESSABLE_CONTENT),
 
     /**
-     * Extensión. El recurso está archivado: sigue existiendo y resolviéndose por identificador, pero
+     * El recurso está archivado: sigue existiendo y resolviéndose por identificador, pero
      * no admite operaciones nuevas (bloquear, presupuestar o comprar butacas de una función
      * archivada, pedir un producto archivado, programar una función de una película o sala
      * archivada). El contexto lleva {@code resource} e {@code id}.
@@ -133,28 +137,28 @@ public enum ErrorCode {
     RESOURCE_ARCHIVED(HttpStatus.UNPROCESSABLE_CONTENT),
 
     /**
-     * Extensión. El mensaje de contacto ya fue leído por administración y su autor no puede
+     * El mensaje de contacto ya fue leído por administración y su autor no puede
      * modificarlo.
      */
     MESSAGE_ALREADY_READ(HttpStatus.UNPROCESSABLE_CONTENT),
 
     /**
-     * Extensión. El recurso existe pero no admite el método HTTP pedido.
+     * El recurso existe pero no admite el método HTTP pedido.
      */
     METHOD_NOT_ALLOWED(HttpStatus.METHOD_NOT_ALLOWED),
 
     /**
-     * Extensión. El servidor no puede producir ninguno de los formatos que acepta el cliente.
+     * El servidor no puede producir ninguno de los formatos que acepta el cliente.
      */
     NOT_ACCEPTABLE(HttpStatus.NOT_ACCEPTABLE),
 
     /**
-     * Extensión. El cuerpo llega en un formato que el endpoint no acepta.
+     * El cuerpo llega en un formato que el endpoint no acepta.
      */
     UNSUPPORTED_MEDIA_TYPE(HttpStatus.UNSUPPORTED_MEDIA_TYPE),
 
     /**
-     * Extensión. Falla inesperada del servidor; el detalle nunca expone la causa interna.
+     * Falla inesperada del servidor; el detalle nunca expone la causa interna.
      */
     INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR);
 

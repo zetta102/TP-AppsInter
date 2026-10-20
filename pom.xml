@@ -17,6 +17,7 @@
         <java.version>25</java.version>
         <error-prone.version>2.50.0</error-prone.version>
         <nullaway.version>0.14.2</nullaway.version>
+        <jjwt.version>0.13.0</jjwt.version>
     </properties>
     <dependencies>
         <dependency>
@@ -71,21 +72,25 @@
             <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
             <version>3.1.0</version>
         </dependency>
+        <!-- Las tres piezas de jjwt van siempre en la misma versión. No se importa jjwt-bom: arrastra su
+             propia versión de jackson-databind y pisaría la que gestiona Spring Boot. -->
         <dependency>
             <groupId>io.jsonwebtoken</groupId>
             <artifactId>jjwt-api</artifactId>
-            <version>0.13.0</version>
+            <version>${jjwt.version}</version>
         </dependency>
         <dependency>
             <groupId>io.jsonwebtoken</groupId>
             <artifactId>jjwt-impl</artifactId>
-            <version>0.13.0</version>
+            <version>${jjwt.version}</version>
             <scope>runtime</scope>
         </dependency>
+        <!-- Jackson 2 y no Gson: springdoc (swagger-core) ya trae Jackson 2, así que otra biblioteca
+             JSON sólo sumaría peso. -->
         <dependency>
             <groupId>io.jsonwebtoken</groupId>
             <artifactId>jjwt-jackson</artifactId>
-            <version>0.13.0</version>
+            <version>${jjwt.version}</version>
             <scope>runtime</scope>
         </dependency>
 
@@ -153,11 +158,6 @@
         <dependency>
             <groupId>org.testcontainers</groupId>
             <artifactId>testcontainers-grafana</artifactId>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.testcontainers</groupId>
-            <artifactId>testcontainers-junit-jupiter</artifactId>
             <scope>test</scope>
         </dependency>
         <dependency>

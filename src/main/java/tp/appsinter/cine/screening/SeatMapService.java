@@ -9,8 +9,7 @@ import tp.appsinter.cine.room.SeatCoordinateComparator;
 import tp.appsinter.cine.room.SeatRepository;
 import tp.appsinter.cine.screening.dto.response.SeatAvailabilityResponseDTO;
 import tp.appsinter.cine.screening.dto.response.SeatMapResponseDTO;
-import tp.appsinter.cine.user.UserService;
-
+import java.time.Clock;
 import java.time.OffsetDateTime;
 import java.util.HashSet;
 import java.util.List;
@@ -30,9 +29,9 @@ public class SeatMapService {
 
     private final MovieScreeningService movieScreeningService;
     private final SeatRepository seatRepository;
-    private final UserService userService;
     private final SoldSeats soldSeats;
     private final HeldSeats heldSeats;
+    private final Clock clock;
 
     /**
      * Mapa de butacas de una función.
@@ -47,8 +46,8 @@ public class SeatMapService {
     public SeatMapResponseDTO findSeatMap(UUID screeningUuid, @Nullable String viewerEmail) {
         MovieScreening screening = movieScreeningService.getScreening(screeningUuid);
         Set<UUID> booked = new HashSet<>(soldSeats.findIds(screeningUuid));
-        UUID viewerUuid = viewerEmail == null ? null : userService.findUuidByEmail(viewerEmail);
-        Set<UUID> held = new HashSet<>(heldSeats.findIds(screeningUuid, viewerUuid, OffsetDateTime.now()));
+        UUID viewerUuid = movieScreeningService.viewerUuid(viewerEmail);
+        Set<UUID> held = new HashSet<>(heldSeats.findIds(screeningUuid, viewerUuid, OffsetDateTime.now(clock)));
         List<Seat> seats = seatRepository.findByScreenRoomUuid(screening.getScreenRoom().getUuid());
 
         return SeatMapResponseDTO.of(

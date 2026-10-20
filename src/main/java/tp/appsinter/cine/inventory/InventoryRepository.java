@@ -7,30 +7,31 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
-import org.springframework.stereotype.Repository;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
 
-@Repository
 public interface InventoryRepository extends JpaRepository<Inventory, UUID> {
 
-    List<Inventory> findByUuidIn(List<UUID> uuids);
+    List<Inventory> findByUuidIn(Collection<UUID> uuids);
 
     /**
      * Búsqueda de productos por categoría y por parte del nombre; cualquier filtro nulo no filtra.
      *
+     * @param pattern         patrón «contiene» ya escapado ({@code CriteriaSupport.containsPattern}),
+     *                        o {@code null} para no filtrar por nombre
      * @param includeArchived si es falso, los productos archivados no aparecen
      */
     @Query("""
             select i
             from Inventory i
             where (:category is null or i.category = :category)
-              and (:term is null or lower(i.productName) like lower(concat('%', cast(:term as String), '%')))
+              and (:pattern is null or lower(i.productName) like cast(:pattern as String) escape '\\')
               and (:includeArchived = true or i.archivedAt is null)
             """)
     Page<Inventory> search(@Param("category") @Nullable ProductCategory category,
-                           @Param("term") @Nullable String term,
+                           @Param("pattern") @Nullable String pattern,
                            @Param("includeArchived") boolean includeArchived,
                            Pageable pageable);
 

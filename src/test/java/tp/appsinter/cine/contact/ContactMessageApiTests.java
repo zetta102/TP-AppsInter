@@ -1,87 +1,71 @@
-package tp.appsinter.cine.api;
+package tp.appsinter.cine.contact;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.assertj.MockMvcTester;
-import tp.appsinter.cine.DatabaseCleaner;
-import tp.appsinter.cine.PostgresTestcontainersConfiguration;
-import tp.appsinter.cine.user.Role;
+import tp.appsinter.cine.contact.dto.request.ContactMessageRequestDTO;
+import tp.appsinter.cine.support.ApiClient;
+import tp.appsinter.cine.support.ApiIntegrationTest;
+import tp.appsinter.cine.support.TestUsers;
 import tp.appsinter.cine.user.UserService;
-import tp.appsinter.cine.user.dto.request.RegisterRequestDTO;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static tp.appsinter.cine.support.TestUsers.ADMIN;
+import static tp.appsinter.cine.support.TestUsers.CUSTOMER;
+import static tp.appsinter.cine.support.TestUsers.OTHER_CUSTOMER;
 
-@SpringBootTest
-@AutoConfigureMockMvc
-@Import(PostgresTestcontainersConfiguration.class)
+@ApiIntegrationTest
 @DisplayName("Contact messages")
 class ContactMessageApiTests {
 
-    private static final String AUTHOR_EMAIL = "ada@example.com";
-    private static final String OTHER_EMAIL = "grace@example.com";
-    private static final String ADMIN_EMAIL = "root@example.com";
-    private static final String PASSWORD = "supersecret";
-
-    @Autowired
-    private JdbcTemplate jdbcTemplate;
     @Autowired
     private MockMvcTester mvc;
     @Autowired
+    private ApiClient api;
+    @Autowired
     private UserService userService;
-
-    private static String body(String category, String subject, String body) {
-        return "{\"category\":\"%s\",\"subject\":\"%s\",\"body\":\"%s\"}".formatted(category, subject, body);
-    }
 
     @BeforeEach
     void setUp() {
-        DatabaseCleaner.truncate(jdbcTemplate);
-
-        userService.createUser(new RegisterRequestDTO("Ada", "Lovelace", AUTHOR_EMAIL, PASSWORD), Role.CUSTOMER);
-        userService.createUser(new RegisterRequestDTO("Grace", "Hopper", OTHER_EMAIL, PASSWORD), Role.CUSTOMER);
-        userService.createUser(new RegisterRequestDTO("Root", "Admin", ADMIN_EMAIL, PASSWORD), Role.ADMIN);
+        TestUsers.createAll(userService);
     }
 
-    private String bearer(String email) {
-        return "Bearer " + assertThat(mvc.post().uri("/api/auth/login")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"email\":\"%s\",\"password\":\"%s\"}".formatted(email, PASSWORD)))
-                .hasStatusOk()
-                .bodyJson().extractingPath("$.token").asString().actual();
+    private static ContactMessageRequestDTO message(ContactCategory category, String subject, String body) {
+        return new ContactMessageRequestDTO(category, subject, body);
     }
 
     private MockMvcTester.MockMvcRequestBuilder send(String email, String content) {
         return mvc.post().uri("/api/contact-messages")
-                .header(HttpHeaders.AUTHORIZATION, bearer(email))
+                .header(HttpHeaders.AUTHORIZATION, api.bearer(email))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(content);
     }
 
-    private String create(String email, String category, String subject) {
-        return assertThat(send(email, body(category, subject, "Hello there")))
+    private MockMvcTester.MockMvcRequestBuilder send(String email, ContactMessageRequestDTO request) {
+        return send(email, api.json(request));
+    }
+
+    private String create(String email, ContactCategory category, String subject) {
+        return assertThat(send(email, message(category, subject, "Hello there")))
                 .hasStatus(HttpStatus.CREATED)
                 .bodyJson().extractingPath("$.uuid").asString().actual();
     }
 
-    private MockMvcTester.MockMvcRequestBuilder edit(String email, String uuid, String content) {
+    private MockMvcTester.MockMvcRequestBuilder edit(String email, String uuid, ContactMessageRequestDTO request) {
         return mvc.put().uri("/api/contact-messages/{uuid}", uuid)
-                .header(HttpHeaders.AUTHORIZATION, bearer(email))
+                .header(HttpHeaders.AUTHORIZATION, api.bearer(email))
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(content);
+                .content(api.json(request));
     }
 
     private MockMvcTester.MockMvcRequestBuilder adminGet(String uri, Object... vars) {
-        return mvc.get().uri(uri, vars).header(HttpHeaders.AUTHORIZATION, bearer(ADMIN_EMAIL));
+        return mvc.get().uri(uri, vars).header(HttpHeaders.AUTHORIZATION, api.bearer(ADMIN));
     }
 
     @Nested
@@ -91,26 +75,27 @@ class ContactMessageApiTests {
         @Test
         @DisplayName("creates a message owned by the caller and points to it")
         void createsMessage() {
-            assertThat(send(AUTHOR_EMAIL, body("COMPLAINT", "  Sticky floor  ", "Room 3")))
+            assertThat(send(CUSTOMER, message(ContactCategory.COMPLAINT, "  Sticky floor  ", "Room \"3\"")))
                     .hasStatus(HttpStatus.CREATED)
                     .containsHeader(HttpHeaders.LOCATION)
                     .bodyJson()
-                    .hasPathSatisfying("$.author.email", email -> assertThat(email).isEqualTo(AUTHOR_EMAIL))
+                    .hasPathSatisfying("$.author.email", email -> assertThat(email).isEqualTo(CUSTOMER))
                     .hasPathSatisfying("$.category", category -> assertThat(category).isEqualTo("COMPLAINT"))
                     .hasPathSatisfying("$.subject", subject -> assertThat(subject).isEqualTo("Sticky floor"))
+                    .hasPathSatisfying("$.body", body -> assertThat(body).isEqualTo("Room \"3\""))
                     .hasPathSatisfying("$.readAt", readAt -> assertThat(readAt).isNull());
         }
 
         @Test
         @DisplayName("rejects an invalid body")
         void rejectsInvalidBody() {
-            assertThat(send(AUTHOR_EMAIL, body("GENERAL", " ", "Hi")))
+            assertThat(send(CUSTOMER, message(ContactCategory.GENERAL, " ", "Hi")))
                     .hasStatus(HttpStatus.BAD_REQUEST)
                     .bodyJson().extractingPath("$.code").isEqualTo("VALIDATION_FAILED");
-            assertThat(send(AUTHOR_EMAIL, "{\"subject\":\"Hi\",\"body\":\"Hi\"}"))
+            assertThat(send(CUSTOMER, "{\"subject\":\"Hi\",\"body\":\"Hi\"}"))
                     .hasStatus(HttpStatus.BAD_REQUEST)
                     .bodyJson().extractingPath("$.code").isEqualTo("VALIDATION_FAILED");
-            assertThat(send(AUTHOR_EMAIL, body("GENERAL", "x".repeat(151), "Hi")))
+            assertThat(send(CUSTOMER, message(ContactCategory.GENERAL, "x".repeat(151), "Hi")))
                     .hasStatus(HttpStatus.BAD_REQUEST)
                     .bodyJson().extractingPath("$.code").isEqualTo("VALIDATION_FAILED");
         }
@@ -118,31 +103,31 @@ class ContactMessageApiTests {
         @Test
         @DisplayName("lists and shows only the caller's own messages")
         void listsOnlyOwnMessages() {
-            String mine = create(AUTHOR_EMAIL, "GENERAL", "Mine");
-            String theirs = create(OTHER_EMAIL, "GENERAL", "Theirs");
+            String mine = create(CUSTOMER, ContactCategory.GENERAL, "Mine");
+            String theirs = create(OTHER_CUSTOMER, ContactCategory.GENERAL, "Theirs");
 
-            assertThat(mvc.get().uri("/api/contact-messages").header(HttpHeaders.AUTHORIZATION, bearer(AUTHOR_EMAIL)))
+            assertThat(mvc.get().uri("/api/contact-messages").header(HttpHeaders.AUTHORIZATION, api.bearer(CUSTOMER)))
                     .hasStatusOk()
                     .bodyJson()
                     .hasPathSatisfying("$.totalElements", total -> assertThat(total).isEqualTo(1))
                     .hasPathSatisfying("$.content[0].uuid", uuid -> assertThat(uuid).isEqualTo(mine));
 
             assertThat(mvc.get().uri("/api/contact-messages/{uuid}", mine)
-                            .header(HttpHeaders.AUTHORIZATION, bearer(AUTHOR_EMAIL)))
+                            .header(HttpHeaders.AUTHORIZATION, api.bearer(CUSTOMER)))
                     .hasStatusOk();
             assertThat(mvc.get().uri("/api/contact-messages/{uuid}", theirs)
-                            .header(HttpHeaders.AUTHORIZATION, bearer(AUTHOR_EMAIL)))
+                            .header(HttpHeaders.AUTHORIZATION, api.bearer(CUSTOMER)))
                     .hasStatus(HttpStatus.NOT_FOUND);
-            assertThat(edit(AUTHOR_EMAIL, theirs, body("GENERAL", "Hijack", "Hijack")))
+            assertThat(edit(CUSTOMER, theirs, message(ContactCategory.GENERAL, "Hijack", "Hijack")))
                     .hasStatus(HttpStatus.NOT_FOUND);
         }
 
         @Test
         @DisplayName("edits a message until an admin opens it")
         void editsUntilRead() {
-            String uuid = create(AUTHOR_EMAIL, "GENERAL", "Original");
+            String uuid = create(CUSTOMER, ContactCategory.GENERAL, "Original");
 
-            assertThat(edit(AUTHOR_EMAIL, uuid, body("SUGGESTION", "Edited", "More popcorn")))
+            assertThat(edit(CUSTOMER, uuid, message(ContactCategory.SUGGESTION, "Edited", "More popcorn")))
                     .hasStatusOk()
                     .bodyJson()
                     .hasPathSatisfying("$.subject", subject -> assertThat(subject).isEqualTo("Edited"))
@@ -153,7 +138,7 @@ class ContactMessageApiTests {
                     .hasStatusOk()
                     .bodyJson().hasPathSatisfying("$.readAt", readAt -> assertThat(readAt).isNotNull());
 
-            assertThat(edit(AUTHOR_EMAIL, uuid, body("SUGGESTION", "Too late", "Too late")))
+            assertThat(edit(CUSTOMER, uuid, message(ContactCategory.SUGGESTION, "Too late", "Too late")))
                     .hasStatus(HttpStatus.UNPROCESSABLE_CONTENT)
                     .bodyJson().extractingPath("$.code").isEqualTo("MESSAGE_ALREADY_READ");
         }
@@ -166,8 +151,8 @@ class ContactMessageApiTests {
         @Test
         @DisplayName("lists every message without marking any as read, and filters")
         void listsAndFilters() {
-            create(AUTHOR_EMAIL, "COMPLAINT", "Noise");
-            String opened = create(OTHER_EMAIL, "GENERAL", "Hours");
+            create(CUSTOMER, ContactCategory.COMPLAINT, "Noise");
+            String opened = create(OTHER_CUSTOMER, ContactCategory.GENERAL, "Hours");
             assertThat(adminGet("/api/admin/contact-messages/{uuid}", opened)).hasStatusOk();
 
             assertThat(adminGet("/api/admin/contact-messages"))
@@ -183,34 +168,36 @@ class ContactMessageApiTests {
                     .bodyJson().hasPathSatisfying("$.content[0].uuid", uuid -> assertThat(uuid).isEqualTo(opened));
             assertThat(adminGet("/api/admin/contact-messages?email=ADA&sort=userEmail,asc"))
                     .hasStatusOk()
-                    .bodyJson().hasPathSatisfying("$.totalElements", total -> assertThat(total).isEqualTo(1));
+                    .bodyJson()
+                    .hasPathSatisfying("$.totalElements", total -> assertThat(total).isEqualTo(1))
+                    .hasPathSatisfying("$.sort", sort -> assertThat(sort).isEqualTo("userEmail: ASC"));
         }
 
         @Test
         @DisplayName("deletes a message")
         void deletesMessage() {
-            String uuid = create(AUTHOR_EMAIL, "GENERAL", "Bye");
+            String uuid = create(CUSTOMER, ContactCategory.GENERAL, "Bye");
 
             assertThat(mvc.delete().uri("/api/admin/contact-messages/{uuid}", uuid)
-                            .header(HttpHeaders.AUTHORIZATION, bearer(ADMIN_EMAIL)))
+                            .header(HttpHeaders.AUTHORIZATION, api.bearer(ADMIN)))
                     .hasStatus(HttpStatus.NO_CONTENT);
             assertThat(adminGet("/api/admin/contact-messages/{uuid}", uuid))
                     .hasStatus(HttpStatus.NOT_FOUND);
             assertThat(mvc.get().uri("/api/contact-messages/{uuid}", uuid)
-                            .header(HttpHeaders.AUTHORIZATION, bearer(AUTHOR_EMAIL)))
+                            .header(HttpHeaders.AUTHORIZATION, api.bearer(CUSTOMER)))
                     .hasStatus(HttpStatus.NOT_FOUND);
         }
 
         @Test
         @DisplayName("keeps customers out")
         void blocksCustomers() {
-            String uuid = create(AUTHOR_EMAIL, "GENERAL", "Mine");
+            String uuid = create(CUSTOMER, ContactCategory.GENERAL, "Mine");
 
             assertThat(mvc.delete().uri("/api/admin/contact-messages/{uuid}", uuid)
-                            .header(HttpHeaders.AUTHORIZATION, bearer(AUTHOR_EMAIL)))
+                            .header(HttpHeaders.AUTHORIZATION, api.bearer(CUSTOMER)))
                     .hasStatus(HttpStatus.FORBIDDEN);
             assertThat(mvc.delete().uri("/api/contact-messages/{uuid}", uuid)
-                            .header(HttpHeaders.AUTHORIZATION, bearer(AUTHOR_EMAIL)))
+                            .header(HttpHeaders.AUTHORIZATION, api.bearer(CUSTOMER)))
                     .hasStatus(HttpStatus.METHOD_NOT_ALLOWED);
         }
     }

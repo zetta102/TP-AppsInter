@@ -1,5 +1,5 @@
 /**
- * Infraestructura web compartida: traducción de errores a cuerpos RFC 7807 y ordenamiento validado de los listados.
+ * Infraestructura web compartida: traducción de errores a cuerpos RFC 9457 y ordenamiento validado de los listados.
  *
  * <p>Los tipos son no nulos salvo que se anoten con {@link org.jspecify.annotations.Nullable}.
  */

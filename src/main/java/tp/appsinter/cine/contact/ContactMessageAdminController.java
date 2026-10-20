@@ -3,6 +3,7 @@ package tp.appsinter.cine.contact;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import org.jspecify.annotations.Nullable;
 import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
@@ -27,11 +28,11 @@ public class ContactMessageAdminController {
 
     @GetMapping
     public PageResponseDTO<ContactMessageResponseDTO> findAll(
-            @RequestParam(required = false) ContactCategory category,
+            @RequestParam(required = false) @Nullable ContactCategory category,
             @Parameter(description = "true for read messages only, false for unread only")
-            @RequestParam(required = false) Boolean read,
+            @RequestParam(required = false) @Nullable Boolean read,
             @Parameter(description = "Part of the author's e-mail, case-insensitive")
-            @RequestParam(required = false) String email,
+            @RequestParam(required = false) @Nullable String email,
             @ParameterObject @AllowedSort(value = {"createdAt", "readAt", "category"}, aliases = {
                     @AllowedSort.Alias(name = "userEmail", property = "user.email")}) Pageable pageable) {
         return contactMessageService.findAll(category, read, email, pageable);
@@ -41,7 +42,7 @@ public class ContactMessageAdminController {
      * Abre un mensaje. La primera apertura lo marca como leído y el autor ya no puede corregirlo.
      */
     @GetMapping("/{uuid}")
-    public ContactMessageResponseDTO findById(@PathVariable UUID uuid) {
+    public ContactMessageResponseDTO open(@PathVariable UUID uuid) {
         return contactMessageService.open(uuid);
     }
 

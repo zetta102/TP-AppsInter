@@ -23,10 +23,13 @@ public interface SoldSeats {
      */
     boolean anyActive(UUID screeningUuid);
 
+    /**
+     * Todas las butacas vendidas de la función.
+     */
     List<UUID> findIds(UUID screeningUuid);
 
     /**
      * Devuelve sólo las butacas del conjunto pedido que ya están vendidas.
      */
-    List<UUID> findIdsAmong(UUID screeningUuid, List<UUID> seatUuids);
+    List<UUID> findIdsAmong(UUID screeningUuid, Collection<UUID> seatUuids);
 }

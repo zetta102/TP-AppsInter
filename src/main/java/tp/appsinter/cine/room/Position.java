@@ -3,6 +3,8 @@ package tp.appsinter.cine.room;
 import jakarta.persistence.Column;
 import jakarta.persistence.Embeddable;
 
+import java.util.Locale;
+
 @Embeddable
 public record Position(
         @Column(name = "seat_row", nullable = false) String row,
@@ -15,7 +17,7 @@ public record Position(
         if (column == null || column.isBlank()) {
             throw new IllegalArgumentException("Seat column must not be blank");
         }
-        row = row.trim().toUpperCase();
+        row = row.trim().toUpperCase(Locale.ROOT);
         column = column.trim();
     }
 }

@@ -6,6 +6,10 @@ import tp.appsinter.cine.room.ScreenRoomType;
 
 import java.util.UUID;
 
+/**
+ * @param seatCount cantidad de butacas cargadas en la sala. Se recibe ya contada: recorrer
+ *                  {@code getSeats()} cargaría todas las butacas de cada sala de un listado.
+ */
 @Schema(name = "Room")
 public record RoomResponseDTO(
         UUID uuid,
@@ -14,12 +18,12 @@ public record RoomResponseDTO(
         int seatCount,
         boolean archived
 ) {
-    public static RoomResponseDTO from(ScreenRoom screenRoom) {
+    public static RoomResponseDTO from(ScreenRoom screenRoom, int seatCount) {
         return new RoomResponseDTO(
                 screenRoom.getUuid(),
                 screenRoom.getRoomName(),
                 screenRoom.getScreenRoomType(),
-                screenRoom.getSeats().size(),
+                seatCount,
                 screenRoom.isArchived()
         );
     }

@@ -8,7 +8,8 @@
 -- - Los importes siguen las mismas reglas que la aplicación: recargo premium de 1,50, fin de función
 --   = inicio + duración + 15 minutos de limpieza, cancelación que deja total_price en cero.
 -- - Las filas raíz usan UUID fijos y legibles (…0001xx usuarios, …0002xx películas, …0003xx salas,
---   …0004xx productos, …0005xx tokens, …0006xx bloqueos) para poder nombrarlas en la documentación.
+--   …0004xx productos, …0005xx tokens, …0006xx bloqueos, …0007xx mensajes de contacto) para poder
+--   nombrarlas en la documentación.
 -- - Las tablas auxiliares son temporales y desaparecen al confirmar la migración.
 
 -- crypt, gen_salt y gen_random_bytes.
@@ -290,9 +291,11 @@ SELECT uuid,
        CASE WHEN archived THEN now() - INTERVAL '5 days' END
 FROM seed_product;
 
--- Cada producto arranca con su carga inicial; algunos tienen además un movimiento posterior.
+-- Cada producto arranca con su carga inicial, con el mismo motivo que asienta InventoryService al dar
+-- de alta un producto; algunos tienen además un movimiento posterior. Ninguno lo hizo una persona
+-- con cuenta, así que adjusted_by queda nulo.
 INSERT INTO inventory_adjustment (uuid, inventory_id, delta, resulting_stock, reason, adjusted_by, created_at)
-SELECT gen_random_uuid(), uuid, initial_stock, initial_stock, 'Stock inicial', 'sistema', now() - INTERVAL '30 days'
+SELECT gen_random_uuid(), uuid, initial_stock, initial_stock, 'Initial stock', NULL, now() - INTERVAL '30 days'
 FROM seed_product;
 
 CREATE TEMPORARY TABLE seed_adjustment
@@ -315,7 +318,7 @@ SELECT gen_random_uuid(),
        a.delta,
        i.quantity + a.delta,
        a.reason,
-       'sistema',
+       NULL,
        now() - a.days_ago * INTERVAL '1 day'
 FROM seed_adjustment a
          JOIN inventory i ON i.uuid = a.inventory_id;
@@ -397,23 +400,32 @@ FROM reservation r
 WHERE r.uuid = t.reservation_id
   AND r.status = 'CANCELLED';
 
+UPDATE reservation_item ri
+SET cancelled_at = r.cancelled_at
+FROM reservation r
+WHERE r.uuid = ri.reservation_id
+  AND r.status = 'CANCELLED';
+
 -- Tokens de refresco --------------------------------------------------------------------------------
 
 -- Historial inutilizable: sólo se guarda el hash de un valor aleatorio que nadie conoce. Uno vencido,
--- uno revocado y una familia rotada cuyo sucesor se cerró al salir.
-INSERT INTO refresh_token (uuid, user_id, family_id, token_hash, created_at, expires_at, rotated_at, revoked_at)
+-- uno cerrado al salir y una familia rotada cuyo sucesor también se cerró al salir. Cerrar sesión
+-- revoca la familia entera, así que el token rotado lleva la misma revocación que su sucesor.
+INSERT INTO refresh_token (uuid, user_id, family_id, token_hash, created_at, expires_at, rotated_at, revoked_at,
+                           revoked_reason)
 VALUES ('00000000-0000-4000-8000-000000000501', '00000000-0000-4000-8000-000000000101',
         '00000000-0000-4000-8000-000000000501', encode(sha256(gen_random_bytes(32)), 'hex'),
-        now() - INTERVAL '40 days', now() - INTERVAL '10 days', NULL, NULL),
+        now() - INTERVAL '40 days', now() - INTERVAL '10 days', NULL, NULL, NULL),
        ('00000000-0000-4000-8000-000000000502', '00000000-0000-4000-8000-000000000102',
         '00000000-0000-4000-8000-000000000502', encode(sha256(gen_random_bytes(32)), 'hex'),
-        now() - INTERVAL '5 days', now() + INTERVAL '25 days', NULL, now() - INTERVAL '4 days'),
+        now() - INTERVAL '5 days', now() + INTERVAL '25 days', NULL, now() - INTERVAL '4 days', 'LOGOUT'),
        ('00000000-0000-4000-8000-000000000503', '00000000-0000-4000-8000-000000000103',
         '00000000-0000-4000-8000-000000000503', encode(sha256(gen_random_bytes(32)), 'hex'),
-        now() - INTERVAL '3 days', now() + INTERVAL '27 days', now() - INTERVAL '2 days', NULL),
+        now() - INTERVAL '3 days', now() + INTERVAL '27 days', now() - INTERVAL '2 days', now() - INTERVAL '1 day',
+        'LOGOUT'),
        ('00000000-0000-4000-8000-000000000504', '00000000-0000-4000-8000-000000000103',
         '00000000-0000-4000-8000-000000000503', encode(sha256(gen_random_bytes(32)), 'hex'),
-        now() - INTERVAL '2 days', now() + INTERVAL '28 days', NULL, now() - INTERVAL '1 day');
+        now() - INTERVAL '2 days', now() + INTERVAL '28 days', NULL, now() - INTERVAL '1 day', 'LOGOUT');
 
 -- Bloqueos de butacas -------------------------------------------------------------------------------
 
@@ -455,3 +467,21 @@ FROM seed_hold h
          JOIN seat ON seat.screen_room_id = h.room_id
     AND seat.seat_row = h.seat_row
     AND seat.seat_column = c;
+
+-- Mensajes de contacto ------------------------------------------------------------------------------
+
+-- Uno sin leer, uno editado por su autor antes de que lo leyeran y uno ya leído por administración,
+-- que su autor ya no puede modificar.
+INSERT INTO contact_message (uuid, user_id, category, subject, body, created_at, updated_at, read_at)
+VALUES ('00000000-0000-4000-8000-000000000701', '00000000-0000-4000-8000-000000000101', 'SUGGESTION',
+        'Funciones subtituladas',
+        'Me gustaría que hubiera más funciones subtituladas de las películas en idioma original.',
+        now() - INTERVAL '2 days', NULL, NULL),
+       ('00000000-0000-4000-8000-000000000702', '00000000-0000-4000-8000-000000000103', 'RESERVATION',
+        'No me llegó la confirmación',
+        'Compré tres entradas para la Sala IMAX y no encuentro el comprobante. ¿Pueden revisarlo?',
+        now() - INTERVAL '30 hours', now() - INTERVAL '29 hours', NULL),
+       ('00000000-0000-4000-8000-000000000703', '00000000-0000-4000-8000-000000000102', 'COMPLAINT',
+        'Aire acondicionado',
+        'En la última función de la Sala 1 hacía mucho calor.',
+        now() - INTERVAL '5 days', NULL, now() - INTERVAL '4 days');

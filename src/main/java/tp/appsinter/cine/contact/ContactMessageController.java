@@ -3,6 +3,7 @@ package tp.appsinter.cine.contact;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.jspecify.annotations.Nullable;
 import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
@@ -40,7 +41,7 @@ public class ContactMessageController {
     @GetMapping
     public PageResponseDTO<ContactMessageResponseDTO> findMine(
             Authentication authentication,
-            @RequestParam(required = false) ContactCategory category,
+            @RequestParam(required = false) @Nullable ContactCategory category,
             @ParameterObject @AllowedSort({"createdAt", "category"}) Pageable pageable) {
         return contactMessageService.findMine(authentication.getName(), category, pageable);
     }

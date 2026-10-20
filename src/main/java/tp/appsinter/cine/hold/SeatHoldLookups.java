@@ -3,30 +3,35 @@ package tp.appsinter.cine.hold;
 import lombok.RequiredArgsConstructor;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
+import tp.appsinter.cine.room.SeatHolds;
 import tp.appsinter.cine.screening.HeldSeats;
+import tp.appsinter.cine.shared.persistence.IdCount;
 
 import java.time.OffsetDateTime;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.stream.Collectors;
 
 /**
- * Responde a {@code screening} sobre los bloqueos vigentes, sin que {@code screening} tenga que
- * conocer los repositorios de {@code hold}.
+ * Responde a {@code screening} y {@code room} sobre los bloqueos vigentes, sin que esas
+ * funcionalidades tengan que conocer los repositorios de {@code hold}.
  */
 @Component
 @RequiredArgsConstructor
-class SeatHoldLookups implements HeldSeats {
+class SeatHoldLookups implements HeldSeats, SeatHolds {
 
     private final SeatHoldRepository seatHoldRepository;
 
     @Override
+    public boolean anyLive(UUID seatUuid, OffsetDateTime now) {
+        return seatHoldRepository.existsLiveContaining(seatUuid, now);
+    }
+
+    @Override
     public Map<UUID, Integer> countByScreening(Collection<UUID> screeningUuids, @Nullable UUID viewerUuid,
                                                OffsetDateTime now) {
-        return seatHoldRepository.countHeldByScreening(screeningUuids, viewerUuid, now).stream()
-                .collect(Collectors.toMap(row -> (UUID) row[0], row -> ((Number) row[1]).intValue()));
+        return IdCount.toMap(seatHoldRepository.countHeldByScreening(screeningUuids, viewerUuid, now));
     }
 
     @Override
@@ -35,8 +40,8 @@ class SeatHoldLookups implements HeldSeats {
     }
 
     @Override
-    public List<UUID> findIdsAmong(UUID screeningUuid, Collection<UUID> seatUuids, @Nullable UUID excludedUserUuid,
+    public List<UUID> findIdsAmong(UUID screeningUuid, Collection<UUID> seatUuids, @Nullable UUID viewerUuid,
                                    OffsetDateTime now) {
-        return seatHoldRepository.findHeldSeatIdsAmong(screeningUuid, seatUuids, excludedUserUuid, now);
+        return seatHoldRepository.findHeldSeatIdsAmong(screeningUuid, seatUuids, viewerUuid, now);
     }
 }

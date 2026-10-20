@@ -70,7 +70,7 @@ public class RecordNullabilityCustomizer implements GlobalOpenApiCustomizer {
             }
             Class<?> previous = records.put(schemaName(type), type);
             if (previous != null) {
-                throw new IllegalStateException("%s y %s publican el mismo esquema %s"
+                throw new IllegalStateException("%s and %s publish the same schema %s"
                         .formatted(previous.getName(), type.getName(), schemaName(type)));
             }
         }

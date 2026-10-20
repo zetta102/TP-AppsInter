@@ -2,10 +2,11 @@ package tp.appsinter.cine.movie;
 
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
+import tp.appsinter.cine.shared.DisplayNamed;
 
 @Getter
 @RequiredArgsConstructor
-public enum MovieGenre {
+public enum MovieGenre implements DisplayNamed {
     ACTION("Action"),
     THRILLER("Thriller"),
     TERROR("Terror"),

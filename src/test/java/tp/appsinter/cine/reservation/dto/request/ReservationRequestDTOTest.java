@@ -2,6 +2,8 @@ package tp.appsinter.cine.reservation.dto.request;
 
 import jakarta.validation.Validation;
 import jakarta.validation.Validator;
+import jakarta.validation.ValidatorFactory;
+import org.junit.jupiter.api.AutoClose;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -18,7 +20,9 @@ class ReservationRequestDTOTest {
     private static final UUID SEAT = UUID.randomUUID();
     private static final UUID POPCORN = UUID.randomUUID();
 
-    private final Validator validator = Validation.buildDefaultValidatorFactory().getValidator();
+    @AutoClose
+    private final ValidatorFactory validatorFactory = Validation.buildDefaultValidatorFactory();
+    private final Validator validator = validatorFactory.getValidator();
 
     @Test
     @DisplayName("merges repeated products into one line")

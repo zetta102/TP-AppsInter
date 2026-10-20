@@ -39,8 +39,8 @@ public class NowShowingController {
     @GetMapping("/api/movies/now-showing")
     public PageResponseDTO<NowShowingResponseDTO> nowShowing(
             @Nullable Authentication authentication,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime from,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime to,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) @Nullable OffsetDateTime from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) @Nullable OffsetDateTime to,
             @ParameterObject @AllowedSort({"movieName", "releaseYear"}) Pageable pageable) {
         return movieScreeningService.nowShowing(from, to,
                 authentication == null ? null : authentication.getName(), pageable);

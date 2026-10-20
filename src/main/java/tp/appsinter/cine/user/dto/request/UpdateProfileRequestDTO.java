@@ -2,6 +2,7 @@ package tp.appsinter.cine.user.dto.request;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 
 /**
  * Datos que un usuario puede corregir de su propia cuenta.
@@ -11,7 +12,7 @@ import jakarta.validation.constraints.NotBlank;
  */
 @Schema(name = "UpdateProfileRequest")
 public record UpdateProfileRequestDTO(
-        @NotBlank String firstName,
-        @NotBlank String lastName
+        @NotBlank @Size(max = 255) String firstName,
+        @NotBlank @Size(max = 255) String lastName
 ) {
 }

@@ -7,12 +7,13 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Raíz de la jerarquía de errores de dominio. Es sellada para que el manejador global pueda hacer
- * un {@code switch} exhaustivo sobre ella.
+ * Raíz de la jerarquía de errores de dominio. Es sellada y sus familias sólo se construyen con
+ * fábricas, de modo que cada combinación de código y contexto que llega al cliente está escrita en
+ * un único lugar.
  *
  * <p>Cada excepción transporta un {@link ErrorCode} estable y, opcionalmente, un mapa de contexto
- * específico del código. Ambos se publican en la respuesta RFC 7807 para que el cliente pueda
- * reaccionar sin interpretar el mensaje humano, que está localizado.
+ * específico del código. Ambos se publican en la respuesta RFC 9457 para que el cliente pueda
+ * reaccionar sin interpretar el mensaje, que es texto en inglés para personas.
  */
 @Getter
 public sealed abstract class DomainException extends RuntimeException

@@ -1,10 +1,12 @@
 package tp.appsinter.cine.shared.web;
 
-import lombok.extern.slf4j.Slf4j;
-import org.hibernate.exception.ConstraintViolationException;
-import org.jspecify.annotations.Nullable;
 import jakarta.validation.ConstraintViolation;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.hibernate.exception.ConstraintViolationException;
+import org.hibernate.exception.DataException;
+import org.jspecify.annotations.Nullable;
+import org.springframework.context.MessageSourceResolvable;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.data.core.PropertyReferenceException;
@@ -14,7 +16,6 @@ import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.AuthenticationException;
-import org.springframework.context.MessageSourceResolvable;
 import org.springframework.validation.FieldError;
 import org.springframework.validation.method.ParameterValidationResult;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -27,11 +28,11 @@ import tp.appsinter.cine.shared.error.DomainException;
 import tp.appsinter.cine.shared.error.ErrorCode;
 import tp.appsinter.cine.shared.error.HasErrorCode;
 import tp.appsinter.cine.shared.error.Violation;
+import tp.appsinter.cine.shared.persistence.DatabaseConstraints;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -39,7 +40,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Traduce toda falla a un cuerpo RFC 7807 con la propiedad {@code code}.
+ * Traduce toda falla a un cuerpo RFC 9457 con la propiedad {@code code}.
  *
  * <p>Extiende {@link ResponseEntityExceptionHandler} para que también los errores del propio
  * framework —cuerpo ilegible, parámetro de tipo incorrecto, ruta o método inexistente— compartan el
@@ -59,10 +60,25 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     private static final Pattern UNKNOWN_ATTRIBUTE = Pattern.compile("attribute '([^']+)'");
 
     /**
-     * Restricciones con traducción propia (ver {@code V1__schema.sql}).
+     * Restricciones de {@code V1__schema.sql} que respaldan una comprobación previa de la aplicación,
+     * con el mismo código y mensaje que esa comprobación habría publicado.
      */
-    private static final String EMAIL_CONSTRAINT = "uk_app_user_email_lower";
-    private static final String SCREENING_OVERLAP_CONSTRAINT = "ex_movie_screening_room_overlap";
+    private static final Map<String, ConstraintProblem> KNOWN_CONSTRAINTS = Map.of(
+            "uk_app_user_email_lower",
+            new ConstraintProblem(ErrorCode.EMAIL_TAKEN, "Email is already registered"),
+            "uk_screen_room_name_lower",
+            new ConstraintProblem(ErrorCode.NAME_TAKEN, "A room with that name already exists"),
+            "uk_inventory_product_name_lower",
+            new ConstraintProblem(ErrorCode.NAME_TAKEN, "A product with that name already exists"),
+            "uk_seat_room_position",
+            new ConstraintProblem(ErrorCode.NAME_TAKEN, "The room already has a seat at that position"),
+            "uk_ticket_screening_seat",
+            new ConstraintProblem(ErrorCode.SEATS_UNAVAILABLE, "One or more seats were just booked by another customer"),
+            "ck_inventory_quantity",
+            new ConstraintProblem(ErrorCode.INSUFFICIENT_STOCK, "Not enough stock for the requested product"),
+            "ex_movie_screening_room_overlap",
+            new ConstraintProblem(ErrorCode.SCREENING_OVERLAP, "The room already has a screening overlapping that time"));
+
     /**
      * SQLSTATE de Postgres para una restricción {@code EXCLUDE} violada.
      */
@@ -111,18 +127,22 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return problem;
     }
 
+    /**
+     * Un {@code IllegalArgumentException} que no viene de un {@code sort} desconocido es un error de
+     * programación, no de quien llama: se publica como cualquier falla inesperada, sin su mensaje.
+     */
     @ExceptionHandler(IllegalArgumentException.class)
     public ProblemDetail handleIllegalArgument(IllegalArgumentException exception) {
         return unknownAttribute(exception)
                 .map(this::sortProblem)
-                .orElseGet(() -> problem(exception.getMessage(), ErrorCode.BAD_REQUEST));
+                .orElseGet(() -> handleUnexpected(exception));
     }
 
     /**
      * Las escrituras concurrentes de stock pierden la comprobación de {@code @Version} al confirmar.
-     * Las compras y cancelaciones ya se reintentan del lado del servidor ({@code @Retryable}), así que
-     * esto sólo llega cuando los reintentos se agotaron o la escritura no es reintentable (la edición
-     * completa de un producto); el cliente sólo tiene que repetir la petición.
+     * Las compras, las cancelaciones y la edición de un producto ya se reintentan del lado del
+     * servidor ({@code @Retryable}), así que esto sólo llega cuando los reintentos se agotaron; el
+     * cliente sólo tiene que repetir la petición.
      */
     @ExceptionHandler(OptimisticLockingFailureException.class)
     public ProblemDetail handleOptimisticLocking(OptimisticLockingFailureException exception) {
@@ -134,34 +154,33 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
      * Llegar acá significa que una petición simultánea ganó la carrera, o que se intentó borrar algo
      * que otros registros siguen referenciando; se publica el mismo código que la comprobación previa
      * habría dado.
+     *
+     * <p>Un valor que no entra en su columna (texto demasiado largo, número fuera de rango) no es un
+     * conflicto sino un pedido inválido; la validación de los DTO ya debería haberlo frenado.
      */
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ProblemDetail handleDataIntegrity(DataIntegrityViolationException exception) {
-        ConstraintViolationException violation = findCause(exception, ConstraintViolationException.class);
-        if (violation == null) {
-            return problem("The request conflicts with the current state of the resource", ErrorCode.CONFLICT);
+        if (DatabaseConstraints.findCause(exception, DataException.class) != null) {
+            return problem("A value does not fit in its field", ErrorCode.BAD_REQUEST);
         }
-        String constraintName = violation.getConstraintName();
-        String constraint = constraintName == null ? "" : constraintName.toLowerCase(Locale.ROOT);
-        if (EXCLUSION_VIOLATION.equals(violation.getSQLState()) || constraint.equals(SCREENING_OVERLAP_CONSTRAINT)) {
-            return problem("The room already has a screening overlapping that time", ErrorCode.SCREENING_OVERLAP);
-        }
-        if (constraint.equals(EMAIL_CONSTRAINT)) {
-            return problem("Email is already registered", ErrorCode.EMAIL_TAKEN);
-        }
-        if (violation.getKind() == ConstraintViolationException.ConstraintKind.FOREIGN_KEY) {
-            return problem("The resource is still referenced by other records", ErrorCode.RESOURCE_IN_USE);
-        }
-        return problem("The request conflicts with the current state of the resource", ErrorCode.CONFLICT);
+        return DatabaseConstraints.violation(exception)
+                .map(this::constraintProblem)
+                .orElseGet(() -> problem("The request conflicts with the current state of the resource",
+                        ErrorCode.CONFLICT));
     }
 
-    private static <T extends Throwable> @Nullable T findCause(Throwable exception, Class<T> type) {
-        for (Throwable current = exception; current != null; current = current.getCause()) {
-            if (type.isInstance(current)) {
-                return type.cast(current);
-            }
+    private ProblemDetail constraintProblem(ConstraintViolationException violation) {
+        ConstraintProblem known = EXCLUSION_VIOLATION.equals(violation.getSQLState())
+                ? KNOWN_CONSTRAINTS.get("ex_movie_screening_room_overlap")
+                : KNOWN_CONSTRAINTS.get(DatabaseConstraints.violatedConstraint(violation));
+        if (known != null) {
+            return problem(known.detail(), known.code());
         }
-        return null;
+        return switch (violation.getKind()) {
+            case FOREIGN_KEY -> problem("The resource is still referenced by other records", ErrorCode.RESOURCE_IN_USE);
+            case null, default -> problem("The request conflicts with the current state of the resource",
+                    ErrorCode.CONFLICT);
+        };
     }
 
     @ExceptionHandler(PropertyReferenceException.class)
@@ -187,6 +206,10 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return problem("Invalid credentials", ErrorCode.INVALID_CREDENTIALS);
     }
 
+    /**
+     * Red de seguridad: los rechazos por rol los resuelve la cadena de filtros
+     * ({@code ProblemDetailAccessDeniedHandler}), porque no hay seguridad a nivel de método.
+     */
     @ExceptionHandler(AccessDeniedException.class)
     public ProblemDetail handleAccessDenied(AccessDeniedException exception) {
         return problem("Access denied", ErrorCode.FORBIDDEN);
@@ -252,7 +275,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         }
         try {
             return Optional.of(ErrorCode.valueOf(name));
-        } catch (IllegalArgumentException unknown) {
+        } catch (IllegalArgumentException _) {
             return Optional.empty();
         }
     }
@@ -286,6 +309,9 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
     private ProblemDetail problem(@Nullable String detail, ErrorCode code) {
         return problems.create(code, detail);
+    }
+
+    private record ConstraintProblem(ErrorCode code, String detail) {
     }
 
     /**
@@ -336,7 +362,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
                             : null;
                 }
                 return source == null ? null : source.unwrap(error, ConstraintViolation.class);
-            } catch (IllegalArgumentException notAViolation) {
+            } catch (IllegalArgumentException _) {
                 return null;
             }
         }

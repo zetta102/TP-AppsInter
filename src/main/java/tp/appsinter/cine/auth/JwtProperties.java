@@ -11,7 +11,8 @@ import java.time.Duration;
 /**
  * Configuración de los tokens.
  *
- * @param secret            clave de firma del token de acceso
+ * @param secret            clave de firma del token de acceso, de al menos 32 caracteres (256 bits,
+ *                          lo que exige HMAC-SHA256)
  * @param expiration        vigencia del token de acceso
  * @param refreshExpiration vigencia del token de refresco
  * @param refreshGrace      ventana durante la cual un token ya rotado se sigue aceptando. Sin ella,

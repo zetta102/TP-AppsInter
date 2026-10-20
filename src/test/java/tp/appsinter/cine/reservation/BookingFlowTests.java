@@ -6,25 +6,13 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.jdbc.core.JdbcTemplate;
-import tp.appsinter.cine.DatabaseCleaner;
-import tp.appsinter.cine.PostgresTestcontainersConfiguration;
 import tp.appsinter.cine.hold.SeatHoldService;
 import tp.appsinter.cine.hold.dto.request.SeatHoldRequestDTO;
-import tp.appsinter.cine.movie.Movie;
-import tp.appsinter.cine.movie.MovieGenre;
-import tp.appsinter.cine.movie.MovieRepository;
 import tp.appsinter.cine.reservation.dto.request.ReservationRequestDTO;
 import tp.appsinter.cine.reservation.dto.response.ReservationResponseDTO;
-import tp.appsinter.cine.room.Position;
 import tp.appsinter.cine.room.ScreenRoom;
-import tp.appsinter.cine.room.ScreenRoomRepository;
-import tp.appsinter.cine.room.ScreenRoomType;
 import tp.appsinter.cine.room.Seat;
-import tp.appsinter.cine.room.SeatRepository;
 import tp.appsinter.cine.room.SeatService;
 import tp.appsinter.cine.room.SeatType;
 import tp.appsinter.cine.room.dto.request.SeatRequestDTO;
@@ -37,27 +25,35 @@ import tp.appsinter.cine.screening.dto.response.SeatAvailabilityResponseDTO;
 import tp.appsinter.cine.shared.error.BusinessRuleException;
 import tp.appsinter.cine.shared.error.ConflictException;
 import tp.appsinter.cine.shared.error.ErrorCode;
-import tp.appsinter.cine.user.Role;
-import tp.appsinter.cine.user.User;
+import tp.appsinter.cine.support.ApiIntegrationTest;
+import tp.appsinter.cine.support.CatalogueFixture;
+import tp.appsinter.cine.support.CatalogueFixture.Catalogue;
+import tp.appsinter.cine.support.MutableClock;
+import tp.appsinter.cine.support.TestUsers;
 import tp.appsinter.cine.user.UserRepository;
+import tp.appsinter.cine.user.UserService;
 
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.time.OffsetDateTime;
-import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.junit.jupiter.api.Assertions.assertAll;
+import static org.assertj.core.api.SoftAssertions.assertSoftly;
+import static tp.appsinter.cine.support.TestUsers.ADMIN;
+import static tp.appsinter.cine.support.TestUsers.CUSTOMER;
+import static tp.appsinter.cine.support.TestUsers.OTHER_CUSTOMER;
 
-@SpringBootTest
-@Import(PostgresTestcontainersConfiguration.class)
+/**
+ * Reglas de compra a nivel de servicio, sin pasar por HTTP.
+ */
+@ApiIntegrationTest
 @DisplayName("Seat booking")
 class BookingFlowTests {
 
-    @Autowired
-    private JdbcTemplate jdbcTemplate;
     @Autowired
     private ReservationService reservationService;
     @Autowired
@@ -73,63 +69,49 @@ class BookingFlowTests {
     @Autowired
     private TicketRepository ticketRepository;
     @Autowired
-    private SeatRepository seatRepository;
-    @Autowired
-    private ScreenRoomRepository screenRoomRepository;
-    @Autowired
-    private MovieRepository movieRepository;
-    @Autowired
     private MovieScreeningRepository movieScreeningRepository;
     @Autowired
     private UserRepository userRepository;
+    @Autowired
+    private UserService userService;
+    @Autowired
+    private CatalogueFixture fixture;
+    @Autowired
+    private MutableClock clock;
 
-    private User customer;
+    private Catalogue catalogue;
     private MovieScreening screening;
     private Seat normalSeat;
     private Seat premiumSeat;
 
     @BeforeEach
     void setUp() {
-        DatabaseCleaner.truncate(jdbcTemplate);
+        TestUsers.createAll(userService);
+        catalogue = fixture.create(SeatType.NORMAL, SeatType.PREMIUM);
+        screening = catalogue.screening();
+        normalSeat = catalogue.seat(1);
+        premiumSeat = catalogue.seat(2);
+    }
 
-        customer = userRepository.save(User.builder()
-                .firstName("Ada")
-                .lastName("Lovelace")
-                .email("ada@example.com")
-                .password("{noop}secret")
-                .role(Role.CUSTOMER)
-                .build());
+    private ReservationRequestDTO request(Seat... seats) {
+        return new ReservationRequestDTO(screening.getUuid(), Arrays.stream(seats).map(Seat::getUuid).toList(),
+                List.of());
+    }
 
-        Movie movie = movieRepository.save(Movie.builder()
-                .movieName("Metropolis")
-                .genres(new ArrayList<>(List.of(MovieGenre.SCI_FI)))
-                .runtime(120)
-                .mainCast(new ArrayList<>(List.of("Brigitte Helm")))
-                .build());
+    private ReservationResponseDTO book(Seat... seats) {
+        return reservationService.createReservation(CUSTOMER, request(seats));
+    }
 
-        ScreenRoom room = screenRoomRepository.save(ScreenRoom.builder()
-                .roomName("Room 1")
-                .screenRoomType(ScreenRoomType.IMAX)
-                .build());
+    /**
+     * Lleva el reloj a diez minutos después del comienzo de la función.
+     */
+    private void startScreening() {
+        clock.advance(Duration.between(fixture.now(), screening.getStartsAt()).plusMinutes(10));
+    }
 
-        normalSeat = seatRepository.save(Seat.builder()
-                .position(new Position("A", "1"))
-                .seatType(SeatType.NORMAL)
-                .screenRoom(room)
-                .build());
-        premiumSeat = seatRepository.save(Seat.builder()
-                .position(new Position("A", "2"))
-                .seatType(SeatType.PREMIUM)
-                .screenRoom(room)
-                .build());
-
-        screening = movieScreeningRepository.save(MovieScreening.builder()
-                .movie(movie)
-                .screenRoom(room)
-                .startsAt(OffsetDateTime.now().plusDays(1))
-                .endsAt(OffsetDateTime.now().plusDays(1).plusMinutes(135))
-                .basePrice(new BigDecimal("10.00"))
-                .build());
+    private OffsetDateTime storedStart() {
+        // Se relee de la base para comparar con la precisión que guarda Postgres (microsegundos).
+        return movieScreeningRepository.findById(screening.getUuid()).orElseThrow().getStartsAt();
     }
 
     @Test
@@ -144,11 +126,11 @@ class BookingFlowTests {
 
     private Reservation persistReservationWithTicket() {
         Reservation reservation = Reservation.builder()
-                .user(customer)
+                .user(userRepository.findByEmailIgnoreCase(CUSTOMER).orElseThrow())
                 .movieScreening(screening)
                 .status(ReservationStatus.CONFIRMED)
                 .totalPrice(new BigDecimal("10.00"))
-                .createdAt(OffsetDateTime.now())
+                .createdAt(fixture.now())
                 .build();
         reservation.addTicket(Ticket.builder()
                 .movieScreening(screening)
@@ -166,47 +148,38 @@ class BookingFlowTests {
         @Test
         @DisplayName("books the requested seats and prices them by seat type")
         void booksRequestedSeats() {
-            ReservationResponseDTO response = reservationService.createReservation(
-                    customer.getEmail(),
-                    new ReservationRequestDTO(screening.getUuid(), List.of(normalSeat.getUuid(), premiumSeat.getUuid()), List.of()));
+            ReservationResponseDTO response = book(normalSeat, premiumSeat);
 
-            assertAll(
-                    () -> assertThat(response.tickets()).hasSize(2),
-                    () -> assertThat(response.status()).isEqualTo(ReservationStatus.CONFIRMED),
-                    // Los identificadores nuevos son UUIDv7: ordenados por creación y amigables con el índice.
-                    () -> assertThat(response.uuid().version()).isEqualTo(7),
-                    () -> assertThat(response.totalPrice()).isEqualByComparingTo(new BigDecimal("25.00")),
-                    () -> assertThat(ticketRepository.findBookedSeatIds(screening.getUuid()))
-                            .containsExactlyInAnyOrder(normalSeat.getUuid(), premiumSeat.getUuid()));
+            assertSoftly(softly -> {
+                softly.assertThat(response.tickets()).hasSize(2);
+                softly.assertThat(response.status()).isEqualTo(ReservationStatus.CONFIRMED);
+                // Los identificadores nuevos son UUIDv7: ordenados por creación y amigables con el índice.
+                softly.assertThat(response.uuid().version()).isEqualTo(7);
+                softly.assertThat(response.totalPrice()).isEqualByComparingTo("25.00");
+                softly.assertThat(ticketRepository.findBookedSeatIds(screening.getUuid()))
+                        .containsExactlyInAnyOrder(normalSeat.getUuid(), premiumSeat.getUuid());
+            });
         }
 
         @Test
         @DisplayName("rejects a seat that is already booked for the same screening")
         void rejectsAlreadyBookedSeat() {
-            reservationService.createReservation(customer.getEmail(),
-                    new ReservationRequestDTO(screening.getUuid(), List.of(normalSeat.getUuid()), List.of()));
+            book(normalSeat);
 
-            assertThatThrownBy(() -> reservationService.createReservation(customer.getEmail(),
-                    new ReservationRequestDTO(screening.getUuid(), List.of(normalSeat.getUuid()), List.of())))
-                    .isInstanceOf(ConflictException.class);
+            assertThatThrownBy(() -> book(normalSeat))
+                    .isInstanceOfSatisfying(ConflictException.class,
+                            ex -> assertThat(ex.getCode()).isEqualTo(ErrorCode.SEATS_UNAVAILABLE));
         }
 
         @Test
         @DisplayName("rejects seats that belong to a different room")
         void rejectsSeatFromAnotherRoom() {
-            ScreenRoom otherRoom = screenRoomRepository.save(ScreenRoom.builder()
-                    .roomName("Room 2")
-                    .screenRoomType(ScreenRoomType.NORMAL)
-                    .build());
-            Seat foreignSeat = seatRepository.save(Seat.builder()
-                    .position(new Position("B", "1"))
-                    .seatType(SeatType.NORMAL)
-                    .screenRoom(otherRoom)
-                    .build());
+            ScreenRoom otherRoom = fixture.room("Room 2");
+            Seat foreignSeat = fixture.seat(otherRoom, "B", "1", SeatType.NORMAL);
 
-            assertThatThrownBy(() -> reservationService.createReservation(customer.getEmail(),
-                    new ReservationRequestDTO(screening.getUuid(), List.of(foreignSeat.getUuid()), List.of())))
-                    .isInstanceOf(BusinessRuleException.class);
+            assertThatThrownBy(() -> book(foreignSeat))
+                    .isInstanceOfSatisfying(BusinessRuleException.class,
+                            ex -> assertThat(ex.getCode()).isEqualTo(ErrorCode.SEATS_WRONG_ROOM));
         }
     }
 
@@ -217,34 +190,28 @@ class BookingFlowTests {
         @Test
         @DisplayName("releases the seats so they can be booked again")
         void releasesSeats() {
-            ReservationResponseDTO created = reservationService.createReservation(customer.getEmail(),
-                    new ReservationRequestDTO(screening.getUuid(), List.of(normalSeat.getUuid()), List.of()));
+            ReservationResponseDTO created = book(normalSeat);
 
-            ReservationResponseDTO cancelled =
-                    reservationService.cancelReservation(created.uuid(), customer.getEmail(), false);
+            ReservationResponseDTO cancelled = reservationService.cancelReservation(created.uuid(), CUSTOMER, false);
 
-            assertAll(
-                    () -> assertThat(cancelled.status()).isEqualTo(ReservationStatus.CANCELLED),
-                    () -> assertThat(ticketRepository.findBookedSeatIds(screening.getUuid())).isEmpty());
-
-            assertThat(reservationService.createReservation(customer.getEmail(),
-                    new ReservationRequestDTO(screening.getUuid(), List.of(normalSeat.getUuid()), List.of())).tickets())
-                    .hasSize(1);
+            assertSoftly(softly -> {
+                softly.assertThat(cancelled.status()).isEqualTo(ReservationStatus.CANCELLED);
+                softly.assertThat(ticketRepository.findBookedSeatIds(screening.getUuid())).isEmpty();
+            });
+            assertThat(book(normalSeat).tickets()).hasSize(1);
         }
 
         @Test
         @DisplayName("refuses a customer cancellation once the screening has started, but lets an admin through")
         void refusesCancellationAfterStart() {
-            ReservationResponseDTO created = reservationService.createReservation(customer.getEmail(),
-                    new ReservationRequestDTO(screening.getUuid(), List.of(normalSeat.getUuid()), List.of()));
-            screening.setStartsAt(OffsetDateTime.now().minusMinutes(10));
-            movieScreeningRepository.save(screening);
+            ReservationResponseDTO created = book(normalSeat);
+            startScreening();
 
-            assertThatThrownBy(() -> reservationService.cancelReservation(created.uuid(), customer.getEmail(), false))
+            assertThatThrownBy(() -> reservationService.cancelReservation(created.uuid(), CUSTOMER, false))
                     .isInstanceOfSatisfying(BusinessRuleException.class,
                             ex -> assertThat(ex.getCode()).isEqualTo(ErrorCode.SCREENING_STARTED));
 
-            assertThat(reservationService.cancelReservation(created.uuid(), "admin@example.com", true).status())
+            assertThat(reservationService.cancelReservation(created.uuid(), ADMIN, true).status())
                     .isEqualTo(ReservationStatus.CANCELLED);
         }
     }
@@ -256,9 +223,8 @@ class BookingFlowTests {
         @Test
         @DisplayName("refuses to move it but still allows changing its type")
         void protectsTicketHistory() {
-            reservationService.createReservation(customer.getEmail(),
-                    new ReservationRequestDTO(screening.getUuid(), List.of(normalSeat.getUuid()), List.of()));
-            UUID roomId = screening.getScreenRoom().getUuid();
+            book(normalSeat);
+            UUID roomId = catalogue.room().getUuid();
 
             assertThatThrownBy(() -> seatService.update(normalSeat.getUuid(),
                     new SeatRequestDTO(roomId, "Z", "9", SeatType.NORMAL)))
@@ -275,61 +241,67 @@ class BookingFlowTests {
     @DisplayName("seat holds by other customers")
     class HoldsByOthers {
 
-        private User other;
-
         @BeforeEach
-        void createOtherCustomer() {
-            other = userRepository.save(User.builder()
-                    .firstName("Grace")
-                    .lastName("Hopper")
-                    .email("grace@example.com")
-                    .password("{noop}secret")
-                    .role(Role.CUSTOMER)
-                    .build());
+        void holdNormalSeat() {
+            seatHoldService.create(screening.getUuid(), OTHER_CUSTOMER,
+                    new SeatHoldRequestDTO(List.of(normalSeat.getUuid())));
         }
 
         @Test
         @DisplayName("are subtracted from screening availability, except for their owner")
         void reduceAvailability() {
-            seatHoldService.create(screening.getUuid(), other.getEmail(),
-                    new SeatHoldRequestDTO(List.of(normalSeat.getUuid())));
-
             var anonymous = movieScreeningService.findById(screening.getUuid(), true, null);
-            assertAll(
-                    () -> assertThat(anonymous.totalSeats()).isEqualTo(2),
-                    () -> assertThat(anonymous.availableSeats()).isEqualTo(1),
-                    () -> assertThat(anonymous.heldSeats()).isEqualTo(1),
-                    () -> assertThat(anonymous.soldOut()).isFalse());
+            var owner = movieScreeningService.findById(screening.getUuid(), true, OTHER_CUSTOMER);
 
-            var owner = movieScreeningService.findById(screening.getUuid(), true, other.getEmail());
-            assertAll(
-                    () -> assertThat(owner.availableSeats()).isEqualTo(2),
-                    () -> assertThat(owner.heldSeats()).isZero());
+            assertSoftly(softly -> {
+                softly.assertThat(anonymous.totalSeats()).isEqualTo(2);
+                softly.assertThat(anonymous.availableSeats()).isEqualTo(1);
+                softly.assertThat(anonymous.heldSeats()).isEqualTo(1);
+                softly.assertThat(anonymous.soldOut()).isFalse();
+                softly.assertThat(owner.availableSeats()).isEqualTo(2);
+                softly.assertThat(owner.heldSeats()).isZero();
+            });
         }
 
         @Test
         @DisplayName("make the quote fail just like the purchase would")
         void blockQuotes() {
-            seatHoldService.create(screening.getUuid(), other.getEmail(),
-                    new SeatHoldRequestDTO(List.of(normalSeat.getUuid())));
-
-            assertThatThrownBy(() -> reservationService.quote(customer.getEmail(),
-                    new ReservationRequestDTO(screening.getUuid(), List.of(normalSeat.getUuid()), List.of())))
+            assertThatThrownBy(() -> reservationService.quote(CUSTOMER, request(normalSeat)))
                     .isInstanceOfSatisfying(ConflictException.class,
                             ex -> assertThat(ex.getCode()).isEqualTo(ErrorCode.SEATS_UNAVAILABLE));
         }
+    }
+
+    @Nested
+    @DisplayName("own seat holds")
+    class OwnHolds {
 
         @Test
         @DisplayName("let their owner quote with the hold without consuming it")
         void quoteWithOwnHold() {
-            var hold = seatHoldService.create(screening.getUuid(), other.getEmail(),
+            var hold = seatHoldService.create(screening.getUuid(), OTHER_CUSTOMER,
                     new SeatHoldRequestDTO(List.of(normalSeat.getUuid())));
 
-            var quote = reservationService.quote(other.getEmail(), new ReservationRequestDTO(
+            var quote = reservationService.quote(OTHER_CUSTOMER, new ReservationRequestDTO(
                     screening.getUuid(), List.of(normalSeat.getUuid()), List.of(), hold.uuid()));
 
             assertThat(quote.totalPrice()).isEqualByComparingTo("10.00");
-            assertThat(seatHoldService.findById(hold.uuid(), other.getEmail()).uuid()).isEqualTo(hold.uuid());
+            assertThat(seatHoldService.findById(hold.uuid(), OTHER_CUSTOMER).uuid()).isEqualTo(hold.uuid());
+        }
+    }
+
+    @Nested
+    @DisplayName("when scheduling a screening")
+    class ScheduleScreening {
+
+        @Test
+        @DisplayName("refuses to create a screening in the past")
+        void refusesPastStart() {
+            assertThatThrownBy(() -> movieScreeningService.create(new ScreeningRequestDTO(
+                    catalogue.movie().getUuid(), catalogue.room().getUuid(),
+                    fixture.now().minusHours(1), new BigDecimal("10.00"))))
+                    .isInstanceOfSatisfying(BusinessRuleException.class,
+                            ex -> assertThat(ex.getCode()).isEqualTo(ErrorCode.VALIDATION_FAILED));
         }
     }
 
@@ -338,30 +310,19 @@ class BookingFlowTests {
     class RescheduleScreening {
 
         @Test
-        @DisplayName("refuses to create a screening in the past")
-        void refusesPastStart() {
-            assertThatThrownBy(() -> movieScreeningService.create(new ScreeningRequestDTO(
-                    screening.getMovie().getUuid(), screening.getScreenRoom().getUuid(),
-                    OffsetDateTime.now().minusHours(1), new BigDecimal("10.00"))))
-                    .isInstanceOfSatisfying(BusinessRuleException.class,
-                            ex -> assertThat(ex.getCode()).isEqualTo(ErrorCode.VALIDATION_FAILED));
-        }
-
-        @Test
         @DisplayName("lets a started screening change only its price")
         void editsStartedScreeningPrice() {
-            screening.setStartsAt(OffsetDateTime.now().minusMinutes(10));
-            movieScreeningRepository.save(screening);
-            UUID movieId = screening.getMovie().getUuid();
-            UUID roomId = screening.getScreenRoom().getUuid();
-            OffsetDateTime startsAt = movieScreeningRepository.findById(screening.getUuid()).orElseThrow().getStartsAt();
+            UUID movieId = catalogue.movie().getUuid();
+            UUID roomId = catalogue.room().getUuid();
+            OffsetDateTime startsAt = storedStart();
+            startScreening();
 
             assertThat(movieScreeningService.update(screening.getUuid(), new ScreeningRequestDTO(
                     movieId, roomId, startsAt, new BigDecimal("8.00"))).basePrice())
                     .isEqualByComparingTo("8.00");
 
             assertThatThrownBy(() -> movieScreeningService.update(screening.getUuid(), new ScreeningRequestDTO(
-                    movieId, roomId, OffsetDateTime.now().plusDays(3), new BigDecimal("8.00"))))
+                    movieId, roomId, fixture.now().plusDays(3), new BigDecimal("8.00"))))
                     .isInstanceOfSatisfying(BusinessRuleException.class,
                             ex -> assertThat(ex.getCode()).isEqualTo(ErrorCode.SCREENING_STARTED));
         }
@@ -369,12 +330,10 @@ class BookingFlowTests {
         @Test
         @DisplayName("refuses to move a screening with tickets sold but still allows a price change")
         void protectsSoldScreenings() {
-            reservationService.createReservation(customer.getEmail(),
-                    new ReservationRequestDTO(screening.getUuid(), List.of(normalSeat.getUuid()), List.of()));
-            UUID movieId = screening.getMovie().getUuid();
-            UUID roomId = screening.getScreenRoom().getUuid();
-            // Se relee de la base para comparar con la precisión que guarda Postgres (microsegundos).
-            OffsetDateTime startsAt = movieScreeningRepository.findById(screening.getUuid()).orElseThrow().getStartsAt();
+            book(normalSeat);
+            UUID movieId = catalogue.movie().getUuid();
+            UUID roomId = catalogue.room().getUuid();
+            OffsetDateTime startsAt = storedStart();
 
             assertThatThrownBy(() -> movieScreeningService.update(screening.getUuid(), new ScreeningRequestDTO(
                     movieId, roomId, startsAt.plusHours(5), new BigDecimal("10.00"))))
@@ -394,8 +353,7 @@ class BookingFlowTests {
         @Test
         @DisplayName("marks booked seats as unavailable")
         void marksBookedSeats() {
-            reservationService.createReservation(customer.getEmail(),
-                    new ReservationRequestDTO(screening.getUuid(), List.of(premiumSeat.getUuid()), List.of()));
+            book(premiumSeat);
 
             List<SeatAvailabilityResponseDTO> availability =
                     seatMapService.findSeatMap(screening.getUuid(), null).seats();

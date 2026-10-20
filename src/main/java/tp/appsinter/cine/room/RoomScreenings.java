@@ -11,7 +11,8 @@ import java.util.UUID;
 public interface RoomScreenings {
 
     /**
-     * Indica si la sala tiene funciones sin archivar que todavía no terminaron.
+     * Indica si la sala tiene funciones sin archivar que todavía no terminaron. El fin de una función
+     * incluye el recambio de sala, así que una función cuenta hasta que la sala se libera.
      */
     boolean hasUpcoming(UUID roomUuid, OffsetDateTime now);
 }

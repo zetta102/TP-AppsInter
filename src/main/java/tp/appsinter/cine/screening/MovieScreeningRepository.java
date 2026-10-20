@@ -8,8 +8,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
-import org.springframework.stereotype.Repository;
-import tp.appsinter.cine.movie.MovieRepository;
+import tp.appsinter.cine.movie.Movie;
 
 import java.time.OffsetDateTime;
 import java.util.Collection;
@@ -17,7 +16,6 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-@Repository
 public interface MovieScreeningRepository extends JpaRepository<MovieScreening, UUID> {
 
     /**
@@ -55,9 +53,29 @@ public interface MovieScreeningRepository extends JpaRepository<MovieScreening, 
                                 Pageable pageable);
 
     /**
+     * Películas vigentes con al menos una función vigente que empieza dentro de la ventana. Es la
+     * primera mitad de la cartelera agregada: pagina las películas, y {@link #findShowingForMovies}
+     * trae después sus funciones. Con {@code to} nulo la ventana no tiene fin (ver {@link #search}
+     * sobre {@code coalesce}).
+     */
+    @Query("""
+            select m
+            from Movie m
+            where m.archivedAt is null
+              and exists (select 1
+                          from MovieScreening s
+                          where s.movie = m
+                            and s.archivedAt is null
+                            and s.startsAt >= :from
+                            and s.startsAt <= coalesce(:to, s.startsAt))
+            """)
+    Page<Movie> findNowShowing(@Param("from") OffsetDateTime from,
+                               @Param("to") @Nullable OffsetDateTime to,
+                               Pageable pageable);
+
+    /**
      * Funciones vigentes de las películas pedidas dentro de la ventana, en orden cronológico. Es la
-     * segunda mitad de la cartelera agregada: la primera pagina las películas
-     * ({@link MovieRepository#findNowShowing}).
+     * segunda mitad de la cartelera agregada ({@link #findNowShowing}).
      */
     @Query("""
             select s

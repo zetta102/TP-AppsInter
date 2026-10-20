@@ -34,6 +34,21 @@ class SortWhitelistTest {
     }
 
     @Test
+    @DisplayName("remembers the order with the published names, for the response")
+    void remembersPublishedSort() {
+        Pageable result = whitelist.apply(PageRequest.of(0, 5, Sort.by(Sort.Order.desc("price"))));
+
+        assertThat(result).isInstanceOfSatisfying(WhitelistedPageRequest.class,
+                page -> assertThat(page.getPublishedSort()).containsExactly(Sort.Order.desc("price")));
+    }
+
+    @Test
+    @DisplayName("publishes its property names in declaration order")
+    void listsPublishedProperties() {
+        assertThat(whitelist.publishedProperties()).containsExactly("productName", "price");
+    }
+
+    @Test
     @DisplayName("rejects a property that is not published, even if the entity has it")
     void rejectsUnpublishedProperty() {
         assertThatThrownBy(() -> whitelist.apply(PageRequest.of(0, 5, Sort.by("cost"))))

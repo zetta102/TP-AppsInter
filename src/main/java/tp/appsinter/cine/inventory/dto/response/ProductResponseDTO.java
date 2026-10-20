@@ -10,10 +10,10 @@ import java.util.UUID;
 /**
  * Proyección pública del catálogo de confitería.
  *
- * <p>Es deliberadamente más pobre que {@link InventoryItemResponseDTO}: el stock y el costo de
- * reposición son datos operativos y no se publican. En su lugar se expone {@code available}, que
- * dice si queda mercadería sin revelar cuánta, y {@code price}, que es el nombre orientado al
- * cliente de lo que el DTO de administración llama {@code cost}.
+ * <p>Es deliberadamente más pobre que {@link InventoryItemResponseDTO}: el stock es un dato
+ * operativo y no se publica. En su lugar se expone {@code available}, que dice si queda mercadería
+ * sin revelar cuánta. {@code price} es el precio de venta, el mismo valor que el DTO de
+ * administración llama {@code cost}.
  */
 @Schema(name = "Product")
 public record ProductResponseDTO(

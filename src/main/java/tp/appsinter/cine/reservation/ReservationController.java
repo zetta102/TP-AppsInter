@@ -9,11 +9,13 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.web.bind.annotation.*;
+import tp.appsinter.cine.reservation.dto.request.MyReservationFilterDTO;
 import tp.appsinter.cine.reservation.dto.request.ReservationFilterDTO;
 import tp.appsinter.cine.reservation.dto.request.ReservationRequestDTO;
 import tp.appsinter.cine.reservation.dto.response.ReservationResponseDTO;
 import tp.appsinter.cine.shared.dto.response.PageResponseDTO;
 import tp.appsinter.cine.shared.web.AllowedSort;
+import tp.appsinter.cine.user.Role;
 
 import java.net.URI;
 import java.util.UUID;
@@ -37,23 +39,23 @@ public class ReservationController {
     /**
      * El contrato expone {@code screening.startsAt} porque es como el cliente llama a la función; la
      * asociación en el modelo se llama {@code movieScreening}. Sin esta traducción, ordenar por «lo
-     * que viene» fallaría con un error de propiedad desconocida. La misma lista rige para
-     * {@link #findAll}.
+     * que viene» fallaría con un error de propiedad desconocida.
      */
     @GetMapping
     public PageResponseDTO<ReservationResponseDTO> findMine(
             Authentication authentication,
-            @ParameterObject ReservationFilterDTO filter,
+            @ParameterObject MyReservationFilterDTO filter,
             @ParameterObject @AllowedSort(value = {"createdAt", "status", "totalPrice", "cancelledAt"}, aliases = {
                     @AllowedSort.Alias(name = "screening.startsAt", property = "movieScreening.startsAt"),
-                    @AllowedSort.Alias(name = "screeningStartsAt", property = "movieScreening.startsAt"),
-                    @AllowedSort.Alias(name = "userEmail", property = "user.email")}) Pageable pageable) {
+                    @AllowedSort.Alias(name = "screeningStartsAt", property = "movieScreening.startsAt")})
+            Pageable pageable) {
         return reservationService.findMine(authentication.getName(), filter, pageable);
     }
 
     /**
      * Vista de administración sobre todos los clientes. El rol se exige en {@code SecurityConfig},
-     * junto con el resto de las reglas de acceso.
+     * junto con el resto de las reglas de acceso. Ordena por lo mismo que el historial propio y,
+     * además, por el correo del titular.
      */
     @GetMapping("/all")
     public PageResponseDTO<ReservationResponseDTO> findAll(
@@ -88,9 +90,9 @@ public class ReservationController {
         return cancel(authentication, uuid);
     }
 
-    private boolean isAdmin(Authentication authentication) {
+    private static boolean isAdmin(Authentication authentication) {
         return authentication.getAuthorities().stream()
                 .map(GrantedAuthority::getAuthority)
-                .anyMatch("ROLE_ADMIN"::equals);
+                .anyMatch(Role.ADMIN.authority()::equals);
     }
 }

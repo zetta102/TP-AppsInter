@@ -3,11 +3,11 @@ package tp.appsinter.cine.auth;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpStatus;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.stereotype.Component;
 import tp.appsinter.cine.shared.error.ErrorCode;
+import tp.appsinter.cine.shared.error.HasErrorCode;
 
 import java.io.IOException;
 
@@ -25,14 +25,13 @@ public class ProblemDetailAuthenticationEntryPoint implements AuthenticationEntr
     public void commence(HttpServletRequest request,
                          HttpServletResponse response,
                          AuthenticationException authException) throws IOException {
-        // Una familia revocada por reutilización no es lo mismo que unas credenciales cualquiera: el
-        // cliente tiene que dejar de reintentar y volver a pedir el inicio de sesión.
-        if (authException instanceof RefreshTokenReusedException) {
-            writer.write(request, response, HttpStatus.UNAUTHORIZED,
-                    authException.getMessage(), ErrorCode.TOKEN_REVOKED);
+        // Una excepción con código propio (una sesión revocada, por ejemplo) no es lo mismo que unas
+        // credenciales cualquiera: el cliente tiene que saber que debe volver a iniciar sesión.
+        if (authException instanceof HasErrorCode coded) {
+            writer.write(request, response, authException.getMessage(), coded.getCode());
             return;
         }
-        writer.write(request, response, HttpStatus.UNAUTHORIZED,
+        writer.write(request, response,
                 "Authentication is required to access this resource", ErrorCode.INVALID_CREDENTIALS);
     }
 }

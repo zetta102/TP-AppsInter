@@ -28,7 +28,10 @@ public class ScreenRoom {
     @EqualsAndHashCode.Include
     private UUID uuid;
 
-    @Column(nullable = false, unique = true)
+    /**
+     * Único sin distinguir mayúsculas: lo garantiza el índice {@code uk_screen_room_name_lower}.
+     */
+    @Column(nullable = false)
     private String roomName;
 
     @Enumerated(EnumType.STRING)
@@ -43,6 +46,7 @@ public class ScreenRoom {
         seats.add(seat);
         seat.setScreenRoom(this);
     }
+
     /**
      * Momento en que se archivó, o {@code null} si está vigente. Archivado no es borrado: deja de
      * ofrecerse, pero sigue resolviéndose por identificador.

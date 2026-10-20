@@ -11,8 +11,12 @@ import tp.appsinter.cine.shared.dto.response.PageResponseDTO;
 import tp.appsinter.cine.shared.error.BusinessRuleException;
 import tp.appsinter.cine.shared.error.ConflictException;
 import tp.appsinter.cine.shared.error.NotFoundException;
+import tp.appsinter.cine.shared.persistence.IdCount;
 
+import java.time.Clock;
 import java.time.OffsetDateTime;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -21,7 +25,9 @@ import java.util.UUID;
 public class ScreenRoomService {
 
     private final ScreenRoomRepository screenRoomRepository;
+    private final SeatRepository seatRepository;
     private final RoomScreenings roomScreenings;
+    private final Clock clock;
 
     @Transactional
     public RoomResponseDTO create(RoomRequestDTO request) {
@@ -34,7 +40,7 @@ public class ScreenRoomService {
                 .roomName(request.roomName())
                 .screenRoomType(request.screenRoomType())
                 .build();
-        return RoomResponseDTO.from(screenRoomRepository.save(room));
+        return RoomResponseDTO.from(screenRoomRepository.save(room), 0);
     }
 
     /**
@@ -44,11 +50,16 @@ public class ScreenRoomService {
         Page<ScreenRoom> rooms = includeArchived
                 ? screenRoomRepository.findAll(pageable)
                 : screenRoomRepository.findByArchivedAtIsNull(pageable);
-        return PageResponseDTO.from(rooms, RoomResponseDTO::from);
+        List<UUID> roomIds = rooms.getContent().stream().map(ScreenRoom::getUuid).toList();
+        Map<UUID, Integer> seatCounts = roomIds.isEmpty()
+                ? Map.of()
+                : IdCount.toMap(seatRepository.countByScreenRoom(roomIds));
+        return PageResponseDTO.from(rooms,
+                room -> RoomResponseDTO.from(room, seatCounts.getOrDefault(room.getUuid(), 0)));
     }
 
     public RoomResponseDTO findById(UUID uuid) {
-        return RoomResponseDTO.from(getScreenRoom(uuid));
+        return describe(getScreenRoom(uuid));
     }
 
     @Transactional
@@ -61,7 +72,7 @@ public class ScreenRoomService {
         }
         room.setRoomName(request.roomName());
         room.setScreenRoomType(request.screenRoomType());
-        return RoomResponseDTO.from(room);
+        return describe(room);
     }
 
     /**
@@ -72,16 +83,16 @@ public class ScreenRoomService {
     public RoomResponseDTO archive(UUID uuid, boolean archived) {
         ScreenRoom room = getScreenRoom(uuid);
         if (archived == room.isArchived()) {
-            return RoomResponseDTO.from(room);
+            return describe(room);
         }
-        OffsetDateTime now = OffsetDateTime.now();
+        OffsetDateTime now = OffsetDateTime.now(clock);
         if (archived && roomScreenings.hasUpcoming(uuid, now)) {
             throw ConflictException.resourceInUse(
                     "Screen room %s still has upcoming screenings; archive them first".formatted(uuid),
                     "Screen room", "Movie screening");
         }
         room.setArchivedAt(archived ? now : null);
-        return RoomResponseDTO.from(room);
+        return describe(room);
     }
 
     @Transactional
@@ -103,5 +114,11 @@ public class ScreenRoomService {
             throw BusinessRuleException.resourceArchived("Screen room", uuid);
         }
         return room;
+    }
+
+    private RoomResponseDTO describe(ScreenRoom room) {
+        return RoomResponseDTO.from(room,
+                IdCount.toMap(seatRepository.countByScreenRoom(List.of(room.getUuid())))
+                        .getOrDefault(room.getUuid(), 0));
     }
 }

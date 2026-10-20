@@ -3,8 +3,11 @@ package tp.appsinter.cine.inventory;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.jspecify.annotations.Nullable;
 import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -30,15 +33,16 @@ public class InventoryController {
 
     @PostMapping
     public ResponseEntity<InventoryItemResponseDTO> create(
+            Authentication authentication,
             @Valid @RequestBody InventoryItemRequestDTO request) {
-        InventoryItemResponseDTO created = inventoryService.create(request);
+        InventoryItemResponseDTO created = inventoryService.create(request, authentication.getName());
         return ResponseEntity.created(URI.create("/api/inventory/" + created.uuid())).body(created);
     }
 
     @GetMapping
     public PageResponseDTO<InventoryItemResponseDTO> findAll(
-            @RequestParam(required = false) ProductCategory category,
-            @RequestParam(required = false) String search,
+            @RequestParam(required = false) @Nullable ProductCategory category,
+            @RequestParam(required = false) @Nullable String search,
             @RequestParam(defaultValue = "false") boolean includeArchived,
             @ParameterObject @AllowedSort({"productName", "category", "cost", "quantity"}) Pageable pageable) {
         return inventoryService.findAll(category, search, includeArchived, pageable);
@@ -53,8 +57,7 @@ public class InventoryController {
     public InventoryItemResponseDTO update(Authentication authentication,
                                              @PathVariable UUID uuid,
                                              @Valid @RequestBody InventoryItemRequestDTO request) {
-        return inventoryService.update(uuid, request,
-                authentication == null ? null : authentication.getName());
+        return inventoryService.update(uuid, request, authentication.getName());
     }
 
     /**
@@ -66,6 +69,10 @@ public class InventoryController {
         return inventoryService.archive(uuid, request.archived());
     }
 
+    /**
+     * Borra un producto sin historia. Uno que ya se vendió o tiene movimientos de stock responde
+     * {@code 409 RESOURCE_IN_USE} y se archiva en su lugar.
+     */
     @DeleteMapping("/{uuid}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable UUID uuid) {
@@ -82,17 +89,17 @@ public class InventoryController {
     public InventoryItemResponseDTO adjustStock(Authentication authentication,
                                                   @PathVariable UUID uuid,
                                                   @Valid @RequestBody InventoryAdjustmentRequestDTO request) {
-        return inventoryService.adjustStock(uuid, request,
-                authentication == null ? null : authentication.getName());
+        return inventoryService.adjustStock(uuid, request, authentication.getName());
     }
 
     /**
-     * Historial de movimientos de stock del producto.
+     * Historial de movimientos de stock del producto; por omisión, del más reciente al más antiguo.
      */
     @GetMapping("/{uuid}/adjustments")
     public PageResponseDTO<InventoryAdjustmentResponseDTO> findAdjustments(
             @PathVariable UUID uuid,
-            @ParameterObject @AllowedSort({"createdAt", "delta", "resultingStock"}) Pageable pageable) {
+            @ParameterObject @PageableDefault(sort = "createdAt", direction = Sort.Direction.DESC)
+            @AllowedSort({"createdAt", "delta", "resultingStock"}) Pageable pageable) {
         return inventoryService.findAdjustments(uuid, pageable);
     }
 }

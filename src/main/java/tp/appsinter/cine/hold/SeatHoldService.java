@@ -9,17 +9,15 @@ import org.springframework.transaction.annotation.Transactional;
 import tp.appsinter.cine.hold.dto.request.SeatHoldRequestDTO;
 import tp.appsinter.cine.hold.dto.response.SeatHoldResponseDTO;
 import tp.appsinter.cine.room.Seat;
-import tp.appsinter.cine.room.SeatRepository;
 import tp.appsinter.cine.screening.MovieScreening;
 import tp.appsinter.cine.screening.MovieScreeningService;
 import tp.appsinter.cine.screening.SeatsChangedEvent;
-import tp.appsinter.cine.screening.SoldSeats;
-import tp.appsinter.cine.shared.error.BusinessRuleException;
 import tp.appsinter.cine.shared.error.ConflictException;
 import tp.appsinter.cine.shared.error.NotFoundException;
 import tp.appsinter.cine.user.User;
 import tp.appsinter.cine.user.UserService;
 
+import java.time.Clock;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -48,12 +46,11 @@ import java.util.stream.Collectors;
 public class SeatHoldService {
 
     private final SeatHoldRepository seatHoldRepository;
-    private final SeatRepository seatRepository;
-    private final SoldSeats soldSeats;
     private final MovieScreeningService movieScreeningService;
     private final UserService userService;
     private final SeatHoldProperties properties;
     private final ApplicationEventPublisher events;
+    private final Clock clock;
 
     @Transactional
     public SeatHoldResponseDTO create(UUID screeningUuid, String userEmail, SeatHoldRequestDTO request) {
@@ -61,7 +58,7 @@ public class SeatHoldService {
         // Sin el bloqueo, dos clientes podrían pasar a la vez la comprobación de abajo y retener la
         // misma butaca: ninguno de los dos podría comprarla hasta que venciera el otro bloqueo.
         MovieScreening screening = movieScreeningService.lockScreening(screeningUuid);
-        OffsetDateTime now = OffsetDateTime.now();
+        OffsetDateTime now = OffsetDateTime.now(clock);
         List<Seat> seats = requireHoldable(screening, request.seatIds(), user, now);
 
         SeatHold hold = SeatHold.builder()
@@ -85,16 +82,19 @@ public class SeatHoldService {
      */
     @Transactional
     public SeatHoldResponseDTO replace(UUID uuid, String userEmail, SeatHoldRequestDTO request) {
-        OffsetDateTime requestedAt = OffsetDateTime.now();
-        UUID screeningUuid = getLiveHold(uuid, userEmail, requestedAt).getMovieScreening().getUuid();
-        // Mismo orden de bloqueo que crear y comprar: primero la función, después la comprobación.
+        UUID screeningUuid = seatHoldRepository.findScreeningUuid(uuid)
+                .orElseThrow(() -> NotFoundException.of("Seat hold", uuid));
+        // Mismo orden de bloqueo que crear y comprar: primero la función, después el bloqueo, que se
+        // lee recién ahora para ver una suelta o una compra que haya terminado mientras tanto.
         MovieScreening screening = movieScreeningService.lockScreening(screeningUuid);
-        OffsetDateTime now = OffsetDateTime.now();
-        SeatHold hold = getLiveHold(uuid, userEmail, now);
+        OffsetDateTime now = OffsetDateTime.now(clock);
+        SeatHold hold = seatHoldRepository.findByIdForUpdate(uuid)
+                .filter(candidate -> isOwnedLive(candidate, userEmail, now))
+                .orElseThrow(() -> NotFoundException.of("Seat hold", uuid));
         List<Seat> seats = requireHoldable(screening, request.seatIds(), hold.getUser(), now);
 
         Set<UUID> changed = new HashSet<>(request.seatIds());
-        hold.getSeats().forEach(seat -> changed.add(seat.getUuid()));
+        changed.addAll(seatIdsOf(hold));
         hold.getSeats().clear();
         hold.getSeats().addAll(seats);
         seatHoldRepository.flush();
@@ -103,34 +103,14 @@ public class SeatHoldService {
     }
 
     /**
-     * Reglas comunes a crear y reemplazar un bloqueo, de la más barata a la más cara: función vigente
-     * y no empezada, butacas existentes y de la sala, ni vendidas ni bloqueadas por otro cliente.
+     * Reglas de crear y reemplazar un bloqueo: las de cualquier ocupación de butacas, más que
+     * ninguna esté bloqueada por otro cliente.
      */
     private List<Seat> requireHoldable(MovieScreening screening,
                                        List<UUID> seatIds,
                                        User holder,
                                        OffsetDateTime now) {
-        MovieScreeningService.requireActive(screening);
-        if (screening.getStartsAt().isBefore(now)) {
-            throw BusinessRuleException.screeningStarted(screening.getUuid(), screening.getStartsAt());
-        }
-
-        List<Seat> seats = seatRepository.findByUuidIn(seatIds);
-        if (seats.size() != seatIds.size()) {
-            throw new NotFoundException("One or more requested seats do not exist", "Seat");
-        }
-
-        UUID roomUuid = screening.getScreenRoom().getUuid();
-        if (!seats.stream().allMatch(seat -> seat.getScreenRoom().getUuid().equals(roomUuid))) {
-            throw BusinessRuleException.seatsWrongRoom(roomUuid, seatIds);
-        }
-
-        List<UUID> sold = soldSeats.findIdsAmong(screening.getUuid(), seatIds);
-        if (!sold.isEmpty()) {
-            throw ConflictException.seatsUnavailable(
-                    "One or more seats are already booked for this screening", sold);
-        }
-
+        List<Seat> seats = movieScreeningService.requireBookableSeats(screening, seatIds, now);
         List<UUID> held = seatHoldRepository.findHeldSeatIdsAmong(
                 screening.getUuid(), seatIds, holder.getUuid(), now);
         if (!held.isEmpty()) {
@@ -145,13 +125,16 @@ public class SeatHoldService {
      * aparta nada, y no hay razón para distinguirlo de uno que nunca existió.
      */
     public SeatHoldResponseDTO findById(UUID uuid, String userEmail) {
-        OffsetDateTime now = OffsetDateTime.now();
+        OffsetDateTime now = OffsetDateTime.now(clock);
         return SeatHoldResponseDTO.from(getLiveHold(uuid, userEmail, now), now);
     }
 
     /**
      * Suelta un bloqueo antes de tiempo. Es idempotente: soltar algo ya soltado o ya vencido no es
      * un error, porque el efecto buscado —que esas butacas estén libres— ya se cumplió.
+     *
+     * <p>El aviso sale aunque el bloqueo ya hubiera vencido: el barrido sólo avisa de los vencidos
+     * que nadie soltó, así que de otro modo nadie anunciaría esas butacas.
      */
     @Transactional
     public void release(UUID uuid, String userEmail) {
@@ -159,51 +142,47 @@ public class SeatHoldService {
                 .filter(hold -> hold.getUser().getEmail().equalsIgnoreCase(userEmail))
                 .filter(hold -> hold.getReleasedAt() == null)
                 .ifPresent(hold -> {
-                    OffsetDateTime now = OffsetDateTime.now();
-                    boolean wasLive = hold.isLive(now);
-                    hold.setReleasedAt(now);
-                    // Uno ya vencido no apartaba nada: soltarlo no cambia lo que ven los demás.
-                    if (wasLive) {
-                        publishChanged(hold.getMovieScreening().getUuid(), seatIdsOf(hold));
-                    }
+                    hold.setReleasedAt(OffsetDateTime.now(clock));
+                    publishChanged(hold.getMovieScreening().getUuid(), seatIdsOf(hold));
                 });
     }
 
     /**
-     * Consume un bloqueo al confirmarse la compra que lo motivó.
-     *
-     * <p>Exige que cubra exactamente las butacas que se están comprando: un bloqueo que no las cubre
-     * no es el de esta compra, y aceptarlo dejaría butacas apartadas sin dueño.
+     * Comprueba, sin consumirlo, que el bloqueo serviría para esta compra: que es propio, vigente,
+     * de esta función y cubre todas las butacas pedidas. Lo usa el presupuesto, para que un
+     * {@code holdId} vencido o ajeno falle ya al presupuestar y no recién al confirmar.
      */
-    @Transactional
-    public void consume(UUID uuid, String userEmail, UUID screeningUuid, Collection<UUID> seatIds) {
-        OffsetDateTime now = OffsetDateTime.now();
-        requireUsable(uuid, userEmail, screeningUuid, seatIds, now).setReleasedAt(now);
+    public void requireUsable(UUID uuid, String userEmail, UUID screeningUuid, Collection<UUID> seatIds) {
+        SeatHold hold = getLiveHold(uuid, userEmail, OffsetDateTime.now(clock));
+        if (!hold.getMovieScreening().getUuid().equals(screeningUuid)) {
+            throw NotFoundException.withMessage("Seat hold", "Seat hold does not belong to this screening");
+        }
+        if (!seatIdsOf(hold).containsAll(seatIds)) {
+            throw ConflictException.seatsUnavailable("The hold does not cover every requested seat", seatIds);
+        }
     }
 
     /**
-     * Comprueba, sin consumirlo, que el bloqueo serviría para esta compra. Lo usa el presupuesto,
-     * para que un {@code holdId} vencido o ajeno falle ya al presupuestar y no recién al confirmar.
+     * Suelta los bloqueos que una compra deja sin objeto: los vigentes de quien compra en esa
+     * función que incluyen alguna de las butacas compradas, sea o no el que indicó la compra.
+     *
+     * <p>Si un bloqueo apartaba más butacas de las que se compraron, las sobrantes quedan libres.
+     * Por eso se devuelven todas las butacas de los bloqueos soltados, para avisar de ellas junto con
+     * las vendidas. Así una butaca nunca queda a la vez vendida y bloqueada.
+     *
+     * <p>El bloqueo que indicó la compra, si indicó uno, ya pasó por {@link #requireUsable}.
+     *
+     * @return las butacas que apartaban los bloqueos soltados
      */
-    public void requireUsable(UUID uuid, String userEmail, UUID screeningUuid, Collection<UUID> seatIds) {
-        requireUsable(uuid, userEmail, screeningUuid, seatIds, OffsetDateTime.now());
-    }
-
-    private SeatHold requireUsable(UUID uuid,
-                                   String userEmail,
-                                   UUID screeningUuid,
-                                   Collection<UUID> seatIds,
-                                   OffsetDateTime now) {
-        SeatHold hold = getLiveHold(uuid, userEmail, now);
-        if (!hold.getMovieScreening().getUuid().equals(screeningUuid)) {
-            throw new NotFoundException("Seat hold does not belong to this screening", "Seat hold");
+    @Transactional
+    public Set<UUID> releaseForPurchase(User buyer, UUID screeningUuid, Collection<UUID> seatIds) {
+        OffsetDateTime now = OffsetDateTime.now(clock);
+        Set<UUID> freed = new HashSet<>();
+        for (SeatHold hold : seatHoldRepository.findLiveOwnedCovering(screeningUuid, buyer.getUuid(), seatIds, now)) {
+            hold.setReleasedAt(now);
+            freed.addAll(seatIdsOf(hold));
         }
-        Set<UUID> heldSeats = hold.getSeats().stream().map(Seat::getUuid).collect(Collectors.toSet());
-        if (!heldSeats.containsAll(seatIds)) {
-            throw ConflictException.seatsUnavailable(
-                    "The hold does not cover every requested seat", seatIds);
-        }
-        return hold;
+        return freed;
     }
 
     /**
@@ -214,7 +193,7 @@ public class SeatHoldService {
      */
     public void requireNotHeldByOthers(UUID screeningUuid, Collection<UUID> seatIds, UUID buyerUuid) {
         List<UUID> held = seatHoldRepository.findHeldSeatIdsAmong(
-                screeningUuid, seatIds, buyerUuid, OffsetDateTime.now());
+                screeningUuid, seatIds, buyerUuid, OffsetDateTime.now(clock));
         if (!held.isEmpty()) {
             throw ConflictException.seatsUnavailable(
                     "One or more seats are being bought by another customer right now", held);
@@ -227,12 +206,12 @@ public class SeatHoldService {
     @Scheduled(fixedDelayString = "${cine.seat-hold.sweep-delay}")
     @Transactional
     public void sweepExpired() {
-        OffsetDateTime now = OffsetDateTime.now();
+        OffsetDateTime now = OffsetDateTime.now(clock);
         // Los vencidos sin soltar no avisaron a nadie al vencer: el aviso sale acá, con a lo sumo un
         // período de barrido de demora. Los soltados ya avisaron al soltarse.
         Map<UUID, Set<UUID>> expiredSeats = new HashMap<>();
         for (SeatHold hold : seatHoldRepository.findExpiredUnreleased(now)) {
-            expiredSeats.computeIfAbsent(hold.getMovieScreening().getUuid(), key -> new HashSet<>())
+            expiredSeats.computeIfAbsent(hold.getMovieScreening().getUuid(), _ -> new HashSet<>())
                     .addAll(seatIdsOf(hold));
         }
         int removed = seatHoldRepository.deleteExpired(now);
@@ -252,10 +231,13 @@ public class SeatHoldService {
         return hold.getSeats().stream().map(Seat::getUuid).collect(Collectors.toSet());
     }
 
+    private static boolean isOwnedLive(SeatHold hold, String userEmail, OffsetDateTime now) {
+        return hold.getUser().getEmail().equalsIgnoreCase(userEmail) && hold.isLive(now);
+    }
+
     private SeatHold getLiveHold(UUID uuid, String userEmail, OffsetDateTime now) {
         return seatHoldRepository.findById(uuid)
-                .filter(hold -> hold.getUser().getEmail().equalsIgnoreCase(userEmail))
-                .filter(hold -> hold.isLive(now))
+                .filter(hold -> isOwnedLive(hold, userEmail, now))
                 .orElseThrow(() -> NotFoundException.of("Seat hold", uuid));
     }
 }

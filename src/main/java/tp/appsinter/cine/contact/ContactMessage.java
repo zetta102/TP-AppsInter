@@ -10,7 +10,8 @@ import java.time.OffsetDateTime;
 import java.util.UUID;
 
 /**
- * Mensaje enviado por un cliente desde el formulario de contacto.
+ * Mensaje enviado desde el formulario de contacto. Cualquier cuenta puede escribir, sea cliente o
+ * de administración.
  *
  * <p>El autor puede corregirlo mientras nadie de administración lo haya leído. Una vez leído queda
  * fijo: lo que se responda tiene que seguir correspondiendo a lo que se preguntó.
@@ -61,13 +62,6 @@ public class ContactMessage {
      */
     @Column(name = "read_at")
     private OffsetDateTime readAt;
-
-    @PrePersist
-    void onCreate() {
-        if (createdAt == null) {
-            createdAt = OffsetDateTime.now();
-        }
-    }
 
     public boolean isRead() {
         return readAt != null;

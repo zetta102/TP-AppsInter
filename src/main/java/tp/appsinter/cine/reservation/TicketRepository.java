@@ -3,7 +3,7 @@ package tp.appsinter.cine.reservation;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
-import org.springframework.stereotype.Repository;
+import tp.appsinter.cine.shared.persistence.IdCount;
 
 import java.util.Collection;
 import java.util.List;
@@ -13,7 +13,6 @@ import java.util.UUID;
  * Las entradas son la fuente de verdad sobre la ocupación de butacas. Todas las consultas de
  * disponibilidad excluyen las entradas liberadas por una cancelación.
  */
-@Repository
 public interface TicketRepository extends JpaRepository<Ticket, UUID> {
 
     /**
@@ -43,7 +42,7 @@ public interface TicketRepository extends JpaRepository<Ticket, UUID> {
               and t.cancelledAt is null
             """)
     List<UUID> findBookedSeatIdsAmong(@Param("screeningUuid") UUID screeningUuid,
-                                      @Param("seatUuids") List<UUID> seatUuids);
+                                      @Param("seatUuids") Collection<UUID> seatUuids);
 
     /**
      * Entradas vendidas por función para un conjunto de funciones, en una sola consulta.
@@ -53,10 +52,10 @@ public interface TicketRepository extends JpaRepository<Ticket, UUID> {
      * tratarse como cero.
      */
     @Query("""
-            select t.movieScreening.uuid, count(t)
+            select new tp.appsinter.cine.shared.persistence.IdCount(t.movieScreening.uuid, count(t))
             from Ticket t
             where t.movieScreening.uuid in :screeningUuids and t.cancelledAt is null
             group by t.movieScreening.uuid
             """)
-    List<Object[]> countBookedByScreening(@Param("screeningUuids") Collection<UUID> screeningUuids);
+    List<IdCount> countBookedByScreening(@Param("screeningUuids") Collection<UUID> screeningUuids);
 }

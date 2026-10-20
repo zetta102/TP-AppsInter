@@ -1,5 +1,6 @@
 package tp.appsinter.cine.shared.web;
 
+import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
@@ -15,13 +16,10 @@ import java.util.List;
  */
 @Configuration(proxyBeanMethods = false)
 @Order(Ordered.HIGHEST_PRECEDENCE)
+@RequiredArgsConstructor
 class SortWebConfig implements WebMvcConfigurer {
 
     private final PageableHandlerMethodArgumentResolver pageableResolver;
-
-    SortWebConfig(PageableHandlerMethodArgumentResolver pageableResolver) {
-        this.pageableResolver = pageableResolver;
-    }
 
     @Override
     public void addArgumentResolvers(List<HandlerMethodArgumentResolver> resolvers) {

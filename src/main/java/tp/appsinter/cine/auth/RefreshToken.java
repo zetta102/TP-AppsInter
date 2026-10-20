@@ -49,6 +49,13 @@ public class RefreshToken {
     private OffsetDateTime revokedAt;
 
     /**
+     * Motivo de la revocación; presente si y sólo si {@link #revokedAt} lo está.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "revoked_reason", length = 20)
+    private RevocationReason revokedReason;
+
+    /**
      * Momento en que este token se usó para refrescar, o {@code null} si sigue sin usarse.
      *
      * <p>Un token rotado no se revoca de inmediato: se lo sigue aceptando durante la ventana de

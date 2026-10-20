@@ -35,7 +35,7 @@ public class HttpUrlValidator implements ConstraintValidator<HttpUrl, String> {
             }
             uri.toURL();
             return true;
-        } catch (URISyntaxException | MalformedURLException | IllegalArgumentException exception) {
+        } catch (URISyntaxException | MalformedURLException | IllegalArgumentException _) {
             return false;
         }
     }

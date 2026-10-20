@@ -13,6 +13,8 @@ import tp.appsinter.cine.shared.error.BusinessRuleException;
 import tp.appsinter.cine.shared.error.ConflictException;
 import tp.appsinter.cine.shared.error.NotFoundException;
 
+import java.time.Clock;
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -30,7 +32,9 @@ public class SeatService {
 
     private final SeatRepository seatRepository;
     private final SeatTickets seatTickets;
+    private final SeatHolds seatHolds;
     private final ScreenRoomService screenRoomService;
+    private final Clock clock;
 
     @Transactional
     public SeatResponseDTO create(SeatRequestDTO request) {
@@ -38,9 +42,7 @@ public class SeatService {
         Position position = new Position(request.row(), request.column());
         if (seatRepository.existsByScreenRoomUuidAndPositionRowAndPositionColumn(
                 room.getUuid(), position.row(), position.column())) {
-            throw ConflictException.nameTaken(
-                    "Seat %s%s already exists in room %s".formatted(position.row(), position.column(), room.getRoomName()),
-                    "position", position.row() + position.column());
+            throw positionTaken(position, room);
         }
         Seat seat = Seat.builder()
                 .position(position)
@@ -181,10 +183,9 @@ public class SeatService {
 
     private int nextFreeRowIndex(UUID screenRoomId) {
         return seatRepository.findByScreenRoomUuid(screenRoomId).stream()
-                .map(seat -> rowIndex(seat.getPosition().row()))
-                .max(Integer::compareTo)
-                .map(last -> last + 1)
-                .orElse(0);
+                .mapToInt(seat -> rowIndex(seat.getPosition().row()))
+                .max()
+                .orElse(-1) + 1;
     }
 
     public List<SeatResponseDTO> findByScreenRoom(UUID screenRoomId) {
@@ -233,9 +234,7 @@ public class SeatService {
         }
         if (seatRepository.existsByScreenRoomUuidAndPositionRowAndPositionColumnAndUuidNot(
                 room.getUuid(), position.row(), position.column(), uuid)) {
-            throw ConflictException.nameTaken(
-                    "Seat %s%s already exists in room %s".formatted(position.row(), position.column(), room.getRoomName()),
-                    "position", position.row() + position.column());
+            throw positionTaken(position, room);
         }
         seat.setPosition(position);
         seat.setSeatType(request.seatType());
@@ -243,9 +242,35 @@ public class SeatService {
         return SeatResponseDTO.from(seat);
     }
 
+    /**
+     * Borra una butaca que nunca se vendió y que nadie está comprando.
+     *
+     * <p>Una butaca con entradas, aunque estén canceladas, es parte del historial de ventas
+     * ({@code 409 RESOURCE_IN_USE}). Una que aparta un bloqueo vigente tampoco se borra: quien la
+     * está comprando la perdería sin aviso, y el mapa de butacas abierto seguiría mostrándola.
+     */
     @Transactional
     public void delete(UUID uuid) {
-        seatRepository.delete(getSeat(uuid));
+        Seat seat = getSeat(uuid);
+        if (seatTickets.anyFor(uuid)) {
+            throw ConflictException.resourceInUse(
+                    "Seat %s already appears on tickets".formatted(uuid), "Seat", "Ticket");
+        }
+        if (seatHolds.anyLive(uuid, OffsetDateTime.now(clock))) {
+            throw ConflictException.resourceInUse(
+                    "Seat %s is being held by a customer right now".formatted(uuid), "Seat", "Seat hold");
+        }
+        seatRepository.delete(seat);
+    }
+
+    /**
+     * Misma forma de error que el alta masiva: {@code NAME_TAKEN} con la lista de posiciones en
+     * {@code context.conflicts}.
+     */
+    private static ConflictException positionTaken(Position position, ScreenRoom room) {
+        String key = key(position.row(), position.column());
+        return ConflictException.seatPositionsTaken(
+                "Seat %s already exists in room %s".formatted(key, room.getRoomName()), List.of(key));
     }
 
     Seat getSeat(UUID uuid) {

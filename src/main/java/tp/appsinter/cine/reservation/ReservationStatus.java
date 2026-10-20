@@ -2,13 +2,14 @@ package tp.appsinter.cine.reservation;
 
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
+import tp.appsinter.cine.shared.DisplayNamed;
 
 /**
  * Estado de una reserva.
  */
 @Getter
 @RequiredArgsConstructor
-public enum ReservationStatus {
+public enum ReservationStatus implements DisplayNamed {
     /**
      * Reservado y sin uso.
      *

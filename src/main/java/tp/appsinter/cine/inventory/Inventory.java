@@ -10,7 +10,7 @@ import java.time.OffsetDateTime;
 import java.util.UUID;
 
 /**
- * Producto del candy bar que se vende en el mostrador.
+ * Producto de la confitería que se vende en el mostrador.
  */
 @Entity
 @NullUnmarked
@@ -30,13 +30,19 @@ public class Inventory {
     @EqualsAndHashCode.Include
     private UUID uuid;
 
-    @Column(nullable = false, unique = true)
+    /**
+     * Único sin distinguir mayúsculas: lo garantiza el índice {@code uk_inventory_product_name_lower}.
+     */
+    @Column(nullable = false)
     private String productName;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private ProductCategory category;
 
+    /**
+     * Precio de venta al público. Cada línea de reserva lo copia al momento de la compra.
+     */
     @Column(nullable = false, precision = 10, scale = 2)
     private BigDecimal cost;
 

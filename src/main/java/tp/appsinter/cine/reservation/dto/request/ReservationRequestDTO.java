@@ -22,7 +22,7 @@ import java.util.UUID;
 @Schema(name = "ReservationRequest")
 public record ReservationRequestDTO(
         @NotNull UUID movieScreeningId,
-        @NotEmpty List<UUID> seatIds,
+        @NotEmpty List<@NotNull UUID> seatIds,
         @Nullable List<@NotNull @Valid ReservationItemRequestDTO> products,
         @Nullable UUID holdId
 ) {

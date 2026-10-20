@@ -2,13 +2,19 @@ package tp.appsinter.cine.room;
 
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.BatchSize;
 import org.hibernate.annotations.UuidGenerator;
 import org.jspecify.annotations.NullUnmarked;
 
 import java.util.UUID;
 
+/**
+ * Una butaca de una sala. Se carga en lotes ({@code @BatchSize}) cuando se navega desde las
+ * entradas de una página de reservas, en lugar de una consulta por entrada.
+ */
 @Entity
 @NullUnmarked
+@BatchSize(size = 50)
 @Table(
         name = "seat",
         uniqueConstraints = @UniqueConstraint(

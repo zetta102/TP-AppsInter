@@ -2,51 +2,45 @@ package tp.appsinter.cine.api;
 
 import com.jayway.jsonpath.DocumentContext;
 import com.jayway.jsonpath.JsonPath;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.DynamicContainer;
+import org.junit.jupiter.api.DynamicNode;
+import org.junit.jupiter.api.DynamicTest;
+import org.junit.jupiter.api.TestFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.assertj.MockMvcTester;
 import org.springframework.test.web.servlet.assertj.MvcTestResult;
-import tp.appsinter.cine.DatabaseCleaner;
-import tp.appsinter.cine.PostgresTestcontainersConfiguration;
-import tp.appsinter.cine.inventory.Inventory;
-import tp.appsinter.cine.inventory.InventoryRepository;
-import tp.appsinter.cine.inventory.ProductCategory;
-import tp.appsinter.cine.movie.Movie;
-import tp.appsinter.cine.movie.MovieGenre;
-import tp.appsinter.cine.movie.MovieRepository;
-import tp.appsinter.cine.room.Position;
-import tp.appsinter.cine.room.ScreenRoom;
-import tp.appsinter.cine.room.ScreenRoomRepository;
-import tp.appsinter.cine.room.ScreenRoomType;
-import tp.appsinter.cine.room.Seat;
-import tp.appsinter.cine.room.SeatRepository;
+import tp.appsinter.cine.inventory.dto.request.InventoryAdjustmentRequestDTO;
+import tp.appsinter.cine.reservation.dto.request.ReservationItemRequestDTO;
+import tp.appsinter.cine.reservation.dto.request.ReservationRequestDTO;
 import tp.appsinter.cine.room.SeatType;
-import tp.appsinter.cine.screening.MovieScreening;
-import tp.appsinter.cine.screening.MovieScreeningRepository;
-import tp.appsinter.cine.user.Role;
+import tp.appsinter.cine.support.ApiClient;
+import tp.appsinter.cine.support.ApiIntegrationTest;
+import tp.appsinter.cine.support.CatalogueFixture;
+import tp.appsinter.cine.support.CatalogueFixture.Catalogue;
+import tp.appsinter.cine.support.TestUsers;
+import tp.appsinter.cine.user.UserRepository;
 import tp.appsinter.cine.user.UserService;
-import tp.appsinter.cine.user.dto.request.RegisterRequestDTO;
 
 import java.io.IOException;
-import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
-import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.DynamicContainer.dynamicContainer;
+import static org.junit.jupiter.api.DynamicTest.dynamicTest;
+import static tp.appsinter.cine.support.TestUsers.ADMIN;
 
 /**
  * Recorre todos los listados paginados contra PostgreSQL real: sin parámetros, con cada filtro
@@ -56,166 +50,120 @@ import static org.assertj.core.api.Assertions.assertThat;
  * {@code GET /api/screenings} respondiera 500 a toda petición en PostgreSQL —«could not determine
  * data type of parameter»— y ninguna prueba lo llamó sin filtros. Los listados, sus filtros y sus
  * órdenes salen de {@code /v3/api-docs}, así que un listado nuevo queda cubierto sin tocar esta
- * prueba.
+ * prueba; cada llamada es una prueba dinámica con su propio nombre.
  */
-@SpringBootTest
-@AutoConfigureMockMvc
-@Import(PostgresTestcontainersConfiguration.class)
+@ApiIntegrationTest
 @DisplayName("List endpoints regression")
 class ListEndpointsRegressionTests {
 
-    private static final String ADMIN_EMAIL = "admin@example.com";
-    private static final String CUSTOMER_EMAIL = "ada@example.com";
-    private static final String PASSWORD = "supersecret";
     private static final String PAGE_SCHEMA_PREFIX = "#/components/schemas/PageResponseDTO";
     private static final List<String> PAGING = List.of("page", "size", "sort");
 
     @Autowired
-    private JdbcTemplate jdbcTemplate;
-    @Autowired
     private MockMvcTester mvc;
+    @Autowired
+    private ApiClient api;
+    @Autowired
+    private CatalogueFixture fixture;
     @Autowired
     private UserService userService;
     @Autowired
-    private MovieRepository movieRepository;
-    @Autowired
-    private ScreenRoomRepository screenRoomRepository;
-    @Autowired
-    private SeatRepository seatRepository;
-    @Autowired
-    private MovieScreeningRepository movieScreeningRepository;
-    @Autowired
-    private InventoryRepository inventoryRepository;
+    private UserRepository userRepository;
 
-    private final Map<String, String> sampleIds = new java.util.HashMap<>();
-    private String adminToken;
+    /**
+     * Valor de cada filtro que nombra un recurso, por nombre del parámetro.
+     */
+    private final Map<String, String> filterIds = new LinkedHashMap<>();
+    /**
+     * Recurso con que se completa un listado anidado, por prefijo de la ruta.
+     */
+    private final Map<String, String> pathIds = new LinkedHashMap<>();
 
     @BeforeEach
     void seed() {
-        DatabaseCleaner.truncate(jdbcTemplate);
-        UUID customerId = userService.createUser(
-                new RegisterRequestDTO("Ada", "Lovelace", CUSTOMER_EMAIL, PASSWORD), Role.CUSTOMER).uuid();
-        userService.createUser(new RegisterRequestDTO("Root", "Admin", ADMIN_EMAIL, PASSWORD), Role.ADMIN);
+        TestUsers.createAll(userService);
+        Catalogue catalogue = fixture.create(SeatType.NORMAL);
+        UUID popcornId = catalogue.popcorn().getUuid();
 
-        Movie movie = movieRepository.save(Movie.builder()
-                .movieName("Arrival")
-                .genres(new ArrayList<>(List.of(MovieGenre.SCI_FI)))
-                .runtime(116)
-                .releaseYear(2016)
-                .mainCast(new ArrayList<>(List.of("Amy Adams")))
-                .build());
-        ScreenRoom room = screenRoomRepository.save(ScreenRoom.builder()
-                .roomName("Room 1")
-                .screenRoomType(ScreenRoomType.NORMAL)
-                .build());
-        Seat seat = seatRepository.save(Seat.builder()
-                .position(new Position("A", "1"))
-                .seatType(SeatType.NORMAL)
-                .screenRoom(room)
-                .build());
-        MovieScreening screening = movieScreeningRepository.save(MovieScreening.builder()
-                .movie(movie)
-                .screenRoom(room)
-                .startsAt(OffsetDateTime.now().plusDays(2))
-                .endsAt(OffsetDateTime.now().plusDays(2).plusMinutes(131))
-                .basePrice(new BigDecimal("10.00"))
-                .build());
-        Inventory popcorn = inventoryRepository.save(Inventory.builder()
-                .productName("Popcorn")
-                .category(ProductCategory.SNACK)
-                .cost(new BigDecimal("4.00"))
-                .quantity(10)
-                .build());
-
-        adminToken = bearer(ADMIN_EMAIL);
         assertThat(mvc.post().uri("/api/reservations")
-                        .header(HttpHeaders.AUTHORIZATION, adminToken)
+                        .header(HttpHeaders.AUTHORIZATION, api.bearer(TestUsers.CUSTOMER))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {"movieScreeningId":"%s","seatIds":["%s"],"products":[{"inventoryId":"%s","quantity":1}]}
-                                """.formatted(screening.getUuid(), seat.getUuid(), popcorn.getUuid())))
+                        .content(api.json(new ReservationRequestDTO(catalogue.screening().getUuid(),
+                                List.of(catalogue.seat(1).getUuid()),
+                                List.of(new ReservationItemRequestDTO(popcornId, 1))))))
                 .hasStatus(HttpStatus.CREATED);
-        assertThat(mvc.post().uri("/api/inventory/{id}/adjustments", popcorn.getUuid())
-                        .header(HttpHeaders.AUTHORIZATION, adminToken)
+        assertThat(mvc.post().uri("/api/inventory/{id}/adjustments", popcornId)
+                        .header(HttpHeaders.AUTHORIZATION, api.bearer(ADMIN))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"delta\":5,\"reason\":\"Restock\"}"))
+                        .content(api.json(new InventoryAdjustmentRequestDTO(5, "Restock"))))
                 .hasStatusOk();
 
-        sampleIds.put("movieId", movie.getUuid().toString());
-        sampleIds.put("roomId", room.getUuid().toString());
-        sampleIds.put("screeningId", screening.getUuid().toString());
-        sampleIds.put("userId", customerId.toString());
-        sampleIds.put("/api/inventory", popcorn.getUuid().toString());
+        filterIds.put("movieId", catalogue.movie().getUuid().toString());
+        filterIds.put("roomId", catalogue.room().getUuid().toString());
+        filterIds.put("screeningId", catalogue.screening().getUuid().toString());
+        filterIds.put("userId", userRepository.findByEmailIgnoreCase(TestUsers.CUSTOMER).orElseThrow().getUuid().toString());
+        pathIds.put("/api/inventory/", popcornId.toString());
     }
 
-    private String bearer(String email) {
-        return "Bearer " + assertThat(mvc.post().uri("/api/auth/login")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"email\":\"%s\",\"password\":\"%s\"}".formatted(email, PASSWORD)))
-                .hasStatusOk()
-                .bodyJson().extractingPath("$.token").asString().actual();
-    }
-
-    @Test
+    @TestFactory
     @DisplayName("every documented list answers 200 with no filter, each filter alone and each sort")
-    void everyListAnswers() throws IOException {
+    Stream<DynamicNode> everyListAnswers() throws IOException {
         MvcTestResult apiDocs = mvc.get().uri("/v3/api-docs").exchange();
         assertThat(apiDocs).hasStatusOk();
         DocumentContext docs = JsonPath.parse(apiDocs.getResponse().getContentAsString(StandardCharsets.UTF_8));
-        Map<String, Map<String, Object>> paths = docs.read("$.paths");
+        Map<String, Object> paths = docs.read("$.paths");
 
-        List<String> calls = new ArrayList<>();
-        List<String> failures = new ArrayList<>();
-        int lists = 0;
-        for (var entry : paths.entrySet()) {
-            Map<String, Object> operation = asMap(entry.getValue().get("get"));
-            if (operation == null || !returnsPage(operation)) {
+        List<DynamicContainer> lists = new ArrayList<>();
+        paths.forEach((template, item) -> {
+            if (item instanceof Map<?, ?> pathItem && pathItem.get("get") instanceof Map<?, ?> operation
+                    && returnsPage(operation)) {
+                lists.add(dynamicContainer(template, callsFor(docs, resolvePath(template), operation)));
+            }
+        });
+
+        assertThat(lists).extracting(DynamicNode::getDisplayName)
+                .as("list endpoints discovered in /v3/api-docs")
+                .contains("/api/movies", "/api/screenings", "/api/reservations", "/api/reservations/all",
+                        "/api/inventory/{uuid}/adjustments", "/api/admin/contact-messages");
+        return lists.stream().map(DynamicNode.class::cast);
+    }
+
+    private Stream<DynamicTest> callsFor(DocumentContext docs, String path, Map<?, ?> operation) {
+        List<Map<?, ?>> parameters = parametersOf(operation);
+        List<DynamicTest> calls = new ArrayList<>();
+        calls.add(call(path, Map.of()));
+        for (Map<?, ?> parameter : parameters) {
+            if (!"query".equals(parameter.get("in")) || !(parameter.get("name") instanceof String name)
+                    || PAGING.contains(name)) {
                 continue;
             }
-            lists++;
-            String path = resolvePath(entry.getKey());
-            List<Map<String, Object>> parameters = parametersOf(operation);
-
-            check(path, Map.of(), calls, failures);
-            for (Map<String, Object> parameter : parameters) {
-                String name = (String) parameter.get("name");
-                if (!"query".equals(parameter.get("in")) || PAGING.contains(name)) {
-                    continue;
-                }
-                check(path, Map.of(name, sampleValue(docs, name, asMap(parameter.get("schema")))), calls, failures);
-            }
-            for (String property : sortProperties(parameters)) {
-                check(path, Map.of("sort", property + ",asc"), calls, failures);
-                check(path, Map.of("sort", property + ",desc"), calls, failures);
-            }
+            calls.add(call(path, Map.of(name, sampleValue(docs, name, parameter.get("schema")))));
         }
-
-        assertThat(lists).as("list endpoints discovered in /v3/api-docs").isGreaterThanOrEqualTo(10);
-        assertThat(calls).hasSizeGreaterThan(60);
-        assertThat(failures).as("calls that did not answer 200").isEmpty();
+        for (String property : sortProperties(parameters)) {
+            calls.add(call(path, Map.of("sort", property + ",asc")));
+            calls.add(call(path, Map.of("sort", property + ",desc")));
+        }
+        return calls.stream();
     }
 
-    private void check(String path, Map<String, String> params, List<String> calls, List<String> failures)
-            throws IOException {
-        var request = mvc.get().uri(path).header(HttpHeaders.AUTHORIZATION, adminToken);
-        params.forEach(request::param);
-        MvcTestResult result = request.exchange();
-        String call = path + " " + params;
-        calls.add(call);
-        if (result.getResponse().getStatus() != 200) {
-            failures.add(call + " -> " + result.getResponse().getStatus() + " "
-                    + result.getResponse().getContentAsString(StandardCharsets.UTF_8));
-        }
+    private DynamicTest call(String path, Map<String, String> params) {
+        return dynamicTest(params.isEmpty() ? "no parameters" : params.toString(), () -> {
+            var request = mvc.get().uri(path).header(HttpHeaders.AUTHORIZATION, api.bearer(ADMIN));
+            params.forEach(request::param);
+            MvcTestResult result = request.exchange();
+            assertThat(result.getResponse().getStatus())
+                    .as("%s %s -> %s", path, params, result.getResponse().getContentAsString(StandardCharsets.UTF_8))
+                    .isEqualTo(HttpStatus.OK.value());
+        });
     }
 
-    private static boolean returnsPage(Map<String, Object> operation) {
-        Map<String, Object> ok = asMap(asMap(operation.get("responses")).get("200"));
-        if (ok == null || ok.get("content") == null) {
-            return false;
-        }
-        return asMap(ok.get("content")).values().stream()
-                .map(media -> asMap(asMap(media).get("schema")))
-                .anyMatch(schema -> schema != null && String.valueOf(schema.get("$ref")).startsWith(PAGE_SCHEMA_PREFIX));
+    private static boolean returnsPage(Map<?, ?> operation) {
+        return operation.get("responses") instanceof Map<?, ?> responses
+                && responses.get("200") instanceof Map<?, ?> ok
+                && ok.get("content") instanceof Map<?, ?> content
+                && content.values().stream().anyMatch(media -> media instanceof Map<?, ?> mediaType
+                        && mediaType.get("schema") instanceof Map<?, ?> schema
+                        && String.valueOf(schema.get("$ref")).startsWith(PAGE_SCHEMA_PREFIX));
     }
 
     /**
@@ -225,7 +173,7 @@ class ListEndpointsRegressionTests {
         if (!template.contains("{")) {
             return template;
         }
-        String id = sampleIds.entrySet().stream()
+        String id = pathIds.entrySet().stream()
                 .filter(sample -> template.startsWith(sample.getKey()))
                 .map(Map.Entry::getValue)
                 .findFirst()
@@ -233,19 +181,27 @@ class ListEndpointsRegressionTests {
         return template.replaceAll("\\{[^}]+}", id);
     }
 
-    @SuppressWarnings("unchecked")
-    private static List<Map<String, Object>> parametersOf(Map<String, Object> operation) {
-        Object parameters = operation.get("parameters");
-        return parameters == null ? List.of() : (List<Map<String, Object>>) parameters;
+    private static List<Map<?, ?>> parametersOf(Map<?, ?> operation) {
+        if (!(operation.get("parameters") instanceof List<?> parameters)) {
+            return List.of();
+        }
+        return parameters.stream()
+                .<Map<?, ?>>mapMulti((parameter, sink) -> {
+                    if (parameter instanceof Map<?, ?> map) {
+                        sink.accept(map);
+                    }
+                })
+                .toList();
     }
 
-    @SuppressWarnings("unchecked")
-    private static List<String> sortProperties(List<Map<String, Object>> parameters) {
+    private static List<String> sortProperties(List<Map<?, ?>> parameters) {
         return parameters.stream()
                 .filter(parameter -> "sort".equals(parameter.get("name")))
-                .map(parameter -> (List<String>) parameter.get("x-sort-properties"))
-                .filter(java.util.Objects::nonNull)
-                .flatMap(List::stream)
+                .<String>mapMulti((parameter, sink) -> {
+                    if (parameter.get("x-sort-properties") instanceof List<?> properties) {
+                        properties.forEach(property -> sink.accept(property.toString()));
+                    }
+                })
                 .toList();
     }
 
@@ -253,43 +209,37 @@ class ListEndpointsRegressionTests {
      * Un valor válido y representativo para el filtro, según su esquema: identificadores sembrados,
      * fechas ISO, booleanos, el primer valor de cada enumeración y texto corto.
      */
-    private String sampleValue(DocumentContext docs, String name, Map<String, Object> schema) {
-        if (schema == null) {
+    private String sampleValue(DocumentContext docs, String name, @Nullable Object schemaNode) {
+        if (!(schemaNode instanceof Map<?, ?> schema)) {
             return "a";
         }
-        Object ref = schema.get("$ref");
-        if (ref != null) {
-            List<String> values = docs.read("$.components.schemas." + ref.toString().substring(ref.toString().lastIndexOf('/') + 1) + ".enum");
+        if (schema.get("$ref") instanceof String ref) {
+            List<String> values = docs.read("$.components.schemas." + ref.substring(ref.lastIndexOf('/') + 1) + ".enum");
             return values.getFirst();
         }
         if ("array".equals(typeOf(schema))) {
-            return sampleValue(docs, name, asMap(schema.get("items")));
+            return sampleValue(docs, name, schema.get("items"));
         }
         if (schema.get("enum") instanceof List<?> values && !values.isEmpty()) {
             return values.getFirst().toString();
         }
-        String format = String.valueOf(schema.get("format"));
         return switch (typeOf(schema)) {
             case "boolean" -> "true";
             case "integer", "number" -> "releaseYear".equals(name) ? "2016" : "1";
-            default -> switch (format) {
-                case "uuid" -> sampleIds.getOrDefault(name, UUID.randomUUID().toString());
-                case "date-time" -> OffsetDateTime.now().format(DateTimeFormatter.ISO_OFFSET_DATE_TIME);
+            default -> switch (String.valueOf(schema.get("format"))) {
+                case "uuid" -> filterIds.getOrDefault(name, UUID.randomUUID().toString());
+                case "date-time" -> fixture.now().format(DateTimeFormatter.ISO_OFFSET_DATE_TIME);
                 default -> "a";
             };
         };
     }
 
-    private static String typeOf(Map<String, Object> schema) {
-        Object type = schema.get("type");
-        if (type instanceof List<?> types) {
-            return types.stream().map(Object::toString).filter(t -> !"null".equals(t)).findFirst().orElse("string");
-        }
-        return type == null ? "string" : type.toString();
-    }
-
-    @SuppressWarnings("unchecked")
-    private static Map<String, Object> asMap(Object value) {
-        return (Map<String, Object>) value;
+    private static String typeOf(Map<?, ?> schema) {
+        return switch (schema.get("type")) {
+            case List<?> types -> types.stream().map(Object::toString)
+                    .filter(type -> !"null".equals(type)).findFirst().orElse("string");
+            case null -> "string";
+            case Object type -> type.toString();
+        };
     }
 }

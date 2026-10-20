@@ -5,61 +5,53 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.context.annotation.Import;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.TransactionTemplate;
-import tp.appsinter.cine.DatabaseCleaner;
-import tp.appsinter.cine.PostgresTestcontainersConfiguration;
 import tp.appsinter.cine.inventory.Inventory;
 import tp.appsinter.cine.inventory.InventoryRepository;
-import tp.appsinter.cine.inventory.ProductCategory;
-import tp.appsinter.cine.movie.Movie;
-import tp.appsinter.cine.movie.MovieGenre;
-import tp.appsinter.cine.movie.MovieRepository;
 import tp.appsinter.cine.reservation.dto.request.ReservationItemRequestDTO;
 import tp.appsinter.cine.reservation.dto.request.ReservationRequestDTO;
 import tp.appsinter.cine.reservation.dto.response.ReservationResponseDTO;
-import tp.appsinter.cine.room.Position;
-import tp.appsinter.cine.room.ScreenRoom;
-import tp.appsinter.cine.room.ScreenRoomRepository;
-import tp.appsinter.cine.room.ScreenRoomType;
-import tp.appsinter.cine.room.Seat;
-import tp.appsinter.cine.room.SeatRepository;
 import tp.appsinter.cine.room.SeatType;
-import tp.appsinter.cine.screening.MovieScreening;
-import tp.appsinter.cine.screening.MovieScreeningRepository;
 import tp.appsinter.cine.shared.error.BusinessRuleException;
+import tp.appsinter.cine.shared.error.ErrorCode;
 import tp.appsinter.cine.shared.error.NotFoundException;
-import tp.appsinter.cine.user.Role;
-import tp.appsinter.cine.user.User;
-import tp.appsinter.cine.user.UserRepository;
+import tp.appsinter.cine.support.ApiIntegrationTest;
+import tp.appsinter.cine.support.CatalogueFixture;
+import tp.appsinter.cine.support.CatalogueFixture.Catalogue;
+import tp.appsinter.cine.support.TestUsers;
+import tp.appsinter.cine.user.UserService;
 
 import java.math.BigDecimal;
-import java.time.OffsetDateTime;
-import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.junit.jupiter.api.Assertions.assertAll;
-import static org.mockito.ArgumentMatchers.anyList;
+import static org.assertj.core.api.SoftAssertions.assertSoftly;
+import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static tp.appsinter.cine.support.CatalogueFixture.POPCORN_STOCK;
+import static tp.appsinter.cine.support.TestUsers.CUSTOMER;
 
-@SpringBootTest
-@Import(PostgresTestcontainersConfiguration.class)
+/**
+ * Confitería dentro de una compra, a nivel de servicio.
+ *
+ * <p>El {@code @MockitoSpyBean} cambia la definición de un bean, así que esta clase no comparte el
+ * contexto de Spring con el resto de las {@link ApiIntegrationTest}: arranca uno propio. Se acepta
+ * por la prueba de concurrencia, que no tiene otra forma de meter una escritura entre la lectura y
+ * la escritura de la compra.
+ */
+@ApiIntegrationTest
 @DisplayName("Concession purchases")
 class ConcessionFlowTests {
 
-    @Autowired
-    private JdbcTemplate jdbcTemplate;
     @Autowired
     private ReservationService reservationService;
     @Autowired
@@ -70,70 +62,27 @@ class ConcessionFlowTests {
     @MockitoSpyBean
     private InventoryRepository inventoryRepository;
     @Autowired
-    private SeatRepository seatRepository;
+    private UserService userService;
     @Autowired
-    private ScreenRoomRepository screenRoomRepository;
-    @Autowired
-    private MovieRepository movieRepository;
-    @Autowired
-    private MovieScreeningRepository movieScreeningRepository;
-    @Autowired
-    private UserRepository userRepository;
+    private CatalogueFixture fixture;
 
-    private User customer;
-    private MovieScreening screening;
-    private Seat seat;
+    private Catalogue catalogue;
     private Inventory popcorn;
 
     @BeforeEach
     void setUp() {
-        DatabaseCleaner.truncate(jdbcTemplate);
-
-        customer = userRepository.save(User.builder()
-                .firstName("Alan")
-                .lastName("Turing")
-                .email("alan@example.com")
-                .password("{noop}secret")
-                .role(Role.CUSTOMER)
-                .build());
-
-        Movie movie = movieRepository.save(Movie.builder()
-                .movieName("Solaris")
-                .genres(new ArrayList<>(List.of(MovieGenre.SCI_FI)))
-                .runtime(100)
-                .mainCast(new ArrayList<>(List.of("Donatas Banionis")))
-                .build());
-
-        ScreenRoom room = screenRoomRepository.save(ScreenRoom.builder()
-                .roomName("Room 9")
-                .screenRoomType(ScreenRoomType.NORMAL)
-                .build());
-
-        seat = seatRepository.save(Seat.builder()
-                .position(new Position("A", "1"))
-                .seatType(SeatType.NORMAL)
-                .screenRoom(room)
-                .build());
-
-        screening = movieScreeningRepository.save(MovieScreening.builder()
-                .movie(movie)
-                .screenRoom(room)
-                .startsAt(OffsetDateTime.now().plusDays(1))
-                .endsAt(OffsetDateTime.now().plusDays(1).plusMinutes(115))
-                .basePrice(new BigDecimal("10.00"))
-                .build());
-
-        popcorn = inventoryRepository.save(Inventory.builder()
-                .productName("Popcorn")
-                .category(ProductCategory.SNACK)
-                .cost(new BigDecimal("4.50"))
-                .quantity(10)
-                .build());
+        TestUsers.createAll(userService);
+        catalogue = fixture.create(SeatType.NORMAL);
+        popcorn = catalogue.popcorn();
     }
 
     private ReservationResponseDTO book(ReservationItemRequestDTO... products) {
-        return reservationService.createReservation(customer.getEmail(),
-                new ReservationRequestDTO(screening.getUuid(), List.of(seat.getUuid()), List.of(products)));
+        return reservationService.createReservation(CUSTOMER, new ReservationRequestDTO(
+                catalogue.screening().getUuid(), List.of(catalogue.seat(1).getUuid()), List.of(products)));
+    }
+
+    private int stock() {
+        return inventoryRepository.findById(popcorn.getUuid()).orElseThrow().getQuantity();
     }
 
     @Nested
@@ -145,15 +94,14 @@ class ConcessionFlowTests {
         void addsLineItems() {
             ReservationResponseDTO response = book(new ReservationItemRequestDTO(popcorn.getUuid(), 2));
 
-            assertAll(
-                    () -> assertThat(response.items()).hasSize(1),
-                    () -> assertThat(response.items().getFirst().productName()).isEqualTo("Popcorn"),
-                    () -> assertThat(response.items().getFirst().lineTotal())
-                            .isEqualByComparingTo(new BigDecimal("9.00")),
-                    // 10.00 ticket + 9.00 popcorn
-                    () -> assertThat(response.totalPrice()).isEqualByComparingTo(new BigDecimal("19.00")),
-                    () -> assertThat(inventoryRepository.findById(popcorn.getUuid()))
-                            .hasValueSatisfying(item -> assertThat(item.getQuantity()).isEqualTo(8)));
+            assertSoftly(softly -> {
+                softly.assertThat(response.items()).hasSize(1);
+                softly.assertThat(response.items().getFirst().productName()).isEqualTo("Popcorn");
+                softly.assertThat(response.items().getFirst().lineTotal()).isEqualByComparingTo("8.00");
+                // 10.00 la entrada + 8.00 los pochoclos
+                softly.assertThat(response.totalPrice()).isEqualByComparingTo("18.00");
+                softly.assertThat(stock()).isEqualTo(POPCORN_STOCK - 2);
+            });
         }
 
         @Test
@@ -163,22 +111,21 @@ class ConcessionFlowTests {
                     new ReservationItemRequestDTO(popcorn.getUuid(), 1),
                     new ReservationItemRequestDTO(popcorn.getUuid(), 2));
 
-            assertAll(
-                    () -> assertThat(response.items()).hasSize(1),
-                    () -> assertThat(response.items().getFirst().quantity()).isEqualTo(3),
-                    () -> assertThat(inventoryRepository.findById(popcorn.getUuid()))
-                            .hasValueSatisfying(item -> assertThat(item.getQuantity()).isEqualTo(7)));
+            assertSoftly(softly -> {
+                softly.assertThat(response.items()).hasSize(1);
+                softly.assertThat(response.items().getFirst().quantity()).isEqualTo(3);
+                softly.assertThat(stock()).isEqualTo(POPCORN_STOCK - 3);
+            });
         }
 
         @Test
         @DisplayName("rejects an order larger than the stock on hand")
         void rejectsInsufficientStock() {
-            assertThatThrownBy(() -> book(new ReservationItemRequestDTO(popcorn.getUuid(), 11)))
-                    .isInstanceOf(BusinessRuleException.class)
-                    .hasMessageContaining("in stock");
+            assertThatThrownBy(() -> book(new ReservationItemRequestDTO(popcorn.getUuid(), POPCORN_STOCK + 1)))
+                    .isInstanceOfSatisfying(BusinessRuleException.class,
+                            ex -> assertThat(ex.getCode()).isEqualTo(ErrorCode.INSUFFICIENT_STOCK));
 
-            assertThat(inventoryRepository.findById(popcorn.getUuid()))
-                    .hasValueSatisfying(item -> assertThat(item.getQuantity()).isEqualTo(10));
+            assertThat(stock()).isEqualTo(POPCORN_STOCK);
         }
 
         @Test
@@ -194,25 +141,24 @@ class ConcessionFlowTests {
     class OnCancellation {
 
         @Test
-        @DisplayName("puts the concessions back on the shelf")
+        @DisplayName("puts the concessions back on the shelf and marks the line")
         void restoresStock() {
             ReservationResponseDTO created = book(new ReservationItemRequestDTO(popcorn.getUuid(), 3));
-            assertThat(inventoryRepository.findById(popcorn.getUuid()))
-                    .hasValueSatisfying(item -> assertThat(item.getQuantity()).isEqualTo(7));
+            assertThat(stock()).isEqualTo(POPCORN_STOCK - 3);
 
-            ReservationResponseDTO cancelled =
-                    reservationService.cancelReservation(created.uuid(), customer.getEmail(), false);
+            ReservationResponseDTO cancelled = reservationService.cancelReservation(created.uuid(), CUSTOMER, false);
 
-            assertAll(
-                    // La cancelación conserva el historial: las líneas siguen ahí y el total pasa a
-                    // cero, con el importe original guardado aparte.
-                    () -> assertThat(cancelled.items()).hasSize(1),
-                    () -> assertThat(cancelled.status()).isEqualTo(ReservationStatus.CANCELLED),
-                    () -> assertThat(cancelled.cancelledAt()).isNotNull(),
-                    () -> assertThat(cancelled.totalPrice()).isEqualByComparingTo(BigDecimal.ZERO),
-                    () -> assertThat(cancelled.originalTotalPrice()).isGreaterThan(BigDecimal.ZERO),
-                    () -> assertThat(inventoryRepository.findById(popcorn.getUuid()))
-                            .hasValueSatisfying(item -> assertThat(item.getQuantity()).isEqualTo(10)));
+            assertSoftly(softly -> {
+                // La cancelación conserva el historial: las líneas siguen ahí y el total pasa a cero,
+                // con el importe original guardado aparte.
+                softly.assertThat(cancelled.items()).hasSize(1);
+                softly.assertThat(cancelled.items().getFirst().cancelledAt()).isNotNull();
+                softly.assertThat(cancelled.status()).isEqualTo(ReservationStatus.CANCELLED);
+                softly.assertThat(cancelled.cancelledAt()).isNotNull();
+                softly.assertThat(cancelled.totalPrice()).isEqualByComparingTo(BigDecimal.ZERO);
+                softly.assertThat(cancelled.originalTotalPrice()).isEqualByComparingTo("22.00");
+                softly.assertThat(stock()).isEqualTo(POPCORN_STOCK);
+            });
         }
     }
 
@@ -231,23 +177,21 @@ class ConcessionFlowTests {
             doAnswer(invocation -> {
                 // El espía de un repositorio delega en el proxy de Spring Data y no tiene «método real»
                 // al que llamar; findAllById hace la misma lectura, porque uuid es el identificador.
-                List<UUID> ids = invocation.getArgument(0);
+                Collection<UUID> ids = invocation.getArgument(0);
                 List<Inventory> loaded = inventoryRepository.findAllById(ids);
                 if (interfered.compareAndSet(false, true)) {
                     otherTransaction.executeWithoutResult(
-                            status -> inventoryRepository.applyDelta(popcorn.getUuid(), 0));
+                            _ -> inventoryRepository.applyDelta(popcorn.getUuid(), 0));
                 }
                 return loaded;
-            }).when(inventoryRepository).findByUuidIn(anyList());
+            }).when(inventoryRepository).findByUuidIn(anyCollection());
 
             ReservationResponseDTO response = book(new ReservationItemRequestDTO(popcorn.getUuid(), 2));
 
-            assertAll(
-                    () -> assertThat(response.items()).hasSize(1),
-                    () -> assertThat(inventoryRepository.findById(popcorn.getUuid()))
-                            .hasValueSatisfying(item -> assertThat(item.getQuantity()).isEqualTo(8)),
-                    // Un intento perdió contra la versión nueva y el reintento la leyó fresca.
-                    () -> verify(inventoryRepository, times(2)).findByUuidIn(anyList()));
+            assertThat(response.items()).hasSize(1);
+            assertThat(stock()).isEqualTo(POPCORN_STOCK - 2);
+            // Un intento perdió contra la versión nueva y el reintento la leyó fresca.
+            verify(inventoryRepository, times(2)).findByUuidIn(anyCollection());
         }
     }
 }

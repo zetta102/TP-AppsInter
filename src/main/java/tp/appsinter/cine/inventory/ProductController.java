@@ -2,6 +2,7 @@ package tp.appsinter.cine.inventory;
 
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import org.jspecify.annotations.Nullable;
 import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Pageable;
 import org.springframework.web.bind.annotation.*;
@@ -15,13 +16,13 @@ import java.util.UUID;
  * Catálogo público de confitería.
  *
  * <p>Existe en paralelo a {@code /api/inventory}, que sigue siendo exclusivo de administración. La
- * carta es información pública, igual que la cartelera, pero el stock y el costo no lo son: por eso
+ * carta es información pública, igual que la cartelera, pero el stock no lo es: por eso
  * hay dos recursos y no un solo endpoint con permisos relajados.
  */
 @RestController
 @RequestMapping("/api/products")
 @RequiredArgsConstructor
-@Tag(name = "Products", description = "Catálogo público de confitería")
+@Tag(name = "Products", description = "Public concessions menu")
 public class ProductController {
 
     private final InventoryService inventoryService;
@@ -33,8 +34,8 @@ public class ProductController {
      */
     @GetMapping
     public PageResponseDTO<ProductResponseDTO> findAll(
-            @RequestParam(required = false) ProductCategory category,
-            @RequestParam(required = false) String search,
+            @RequestParam(required = false) @Nullable ProductCategory category,
+            @RequestParam(required = false) @Nullable String search,
             @ParameterObject @AllowedSort(value = {"productName", "category"},
                     aliases = @AllowedSort.Alias(name = "price", property = "cost")) Pageable pageable) {
         return inventoryService.findAllProducts(category, search, pageable);

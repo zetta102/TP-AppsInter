@@ -4,6 +4,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
+import tp.appsinter.cine.shared.validation.NonZero;
 
 /**
  * Ajuste de stock de un producto.
@@ -17,7 +18,7 @@ import jakarta.validation.constraints.Size;
  */
 @Schema(name = "InventoryAdjustmentRequest")
 public record InventoryAdjustmentRequestDTO(
-        @NotNull Integer delta,
+        @NotNull @NonZero Integer delta,
         @NotBlank @Size(max = 255) String reason
 ) {
 }

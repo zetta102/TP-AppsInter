@@ -17,7 +17,9 @@ import tp.appsinter.cine.user.dto.request.RegisterRequestDTO;
 import tp.appsinter.cine.user.dto.request.UpdateProfileRequestDTO;
 import tp.appsinter.cine.user.dto.response.UserResponseDTO;
 
+import java.time.Clock;
 import java.time.OffsetDateTime;
+import java.util.Locale;
 import java.util.UUID;
 
 @Service
@@ -29,6 +31,7 @@ public class UserService {
     private final UserReservations userReservations;
     private final UserSessions userSessions;
     private final PasswordEncoder passwordEncoder;
+    private final Clock clock;
 
     @Transactional
     public UserResponseDTO createUser(RegisterRequestDTO request) {
@@ -43,7 +46,7 @@ public class UserService {
         User user = User.builder()
                 .firstName(request.firstName())
                 .lastName(request.lastName())
-                .email(request.email().toLowerCase())
+                .email(request.email().toLowerCase(Locale.ROOT))
                 .password(passwordEncoder.encode(request.password()))
                 .role(role)
                 .build();
@@ -146,12 +149,13 @@ public class UserService {
         if (user.getRole() == Role.ADMIN && userRepository.countByRoleAndDeletedAtIsNull(Role.ADMIN) <= 1) {
             throw BusinessRuleException.lastAdmin("The system must keep at least one administrator");
         }
-        if (userReservations.hasActive(uuid, OffsetDateTime.now())) {
+        OffsetDateTime now = OffsetDateTime.now(clock);
+        if (userReservations.hasActive(uuid, now)) {
             throw ConflictException.resourceInUse(
                     "User %s still holds reservations for upcoming screenings".formatted(uuid),
                     "User", "Reservation");
         }
-        user.setDeletedAt(OffsetDateTime.now());
+        user.setDeletedAt(now);
         userSessions.revokeAll(user);
     }
 
@@ -166,7 +170,7 @@ public class UserService {
     public User getByEmail(String email) {
         return userRepository.findByEmailIgnoreCase(email)
                 .filter(user -> !user.isDeleted())
-                .orElseThrow(() -> new NotFoundException("User %s not found".formatted(email), "User"));
+                .orElseThrow(() -> NotFoundException.withMessage("User", "User %s not found".formatted(email)));
     }
 
     /**

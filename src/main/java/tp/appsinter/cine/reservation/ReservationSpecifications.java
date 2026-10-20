@@ -7,6 +7,7 @@ import jakarta.persistence.criteria.Root;
 import org.jspecify.annotations.Nullable;
 import org.springframework.data.jpa.domain.Specification;
 import tp.appsinter.cine.screening.MovieScreening;
+import tp.appsinter.cine.shared.persistence.CriteriaSupport;
 
 import java.time.OffsetDateTime;
 import java.util.Locale;
@@ -33,15 +34,13 @@ public final class ReservationSpecifications {
     }
 
     /**
-     * Trae en la misma consulta las asociaciones que el DTO de respuesta siempre necesita, para que
-     * una página no dispare una consulta por fila.
-     *
-     * <p>Sólo aplica cuando la consulta no es de conteo: Hibernate rechaza un {@code fetch} dentro
-     * de un {@code count}, y el paginado de Spring Data ejecuta ambas.
+     * Trae en la misma consulta las asociaciones de cabecera que el DTO de respuesta siempre
+     * necesita. Las colecciones (entradas y confitería) se cargan en lotes ({@code @BatchSize} en
+     * {@link Reservation}): traerlas acá multiplicaría las filas y rompería el paginado.
      */
     public static Specification<Reservation> withAssociations() {
         return (root, query, builder) -> {
-            if (query != null && !isCountQuery(query.getResultType())) {
+            if (!CriteriaSupport.isCountQuery(query)) {
                 root.fetch("user", JoinType.LEFT);
                 Fetch<?, ?> screening = root.fetch("movieScreening", JoinType.LEFT);
                 screening.fetch("movie", JoinType.LEFT);
@@ -52,20 +51,20 @@ public final class ReservationSpecifications {
     }
 
     public static Specification<Reservation> ownedBy(String email) {
-        return (root, query, builder) -> builder.equal(
+        return (root, _, builder) -> builder.equal(
                 builder.lower(root.get("user").get("email")), email.toLowerCase(Locale.ROOT));
     }
 
     public static Specification<Reservation> hasStatus(@Nullable ReservationStatus status) {
         return status == null
                 ? Specification.unrestricted()
-                : (root, query, builder) -> builder.equal(root.get("status"), status);
+                : (root, _, builder) -> builder.equal(root.get("status"), status);
     }
 
     public static Specification<Reservation> hasUser(@Nullable UUID userId) {
         return userId == null
                 ? Specification.unrestricted()
-                : (root, query, builder) -> builder.equal(root.get("user").get("uuid"), userId);
+                : (root, _, builder) -> builder.equal(root.get("user").get("uuid"), userId);
     }
 
     /**
@@ -73,23 +72,22 @@ public final class ReservationSpecifications {
      * operador de mostrador busca a un cliente.
      */
     public static Specification<Reservation> emailContains(@Nullable String email) {
-        if (email == null || email.isBlank()) {
-            return Specification.unrestricted();
-        }
-        String pattern = "%" + email.trim().toLowerCase(Locale.ROOT) + "%";
-        return (root, query, builder) -> builder.like(builder.lower(root.get("user").get("email")), pattern);
+        String pattern = CriteriaSupport.containsPattern(email);
+        return pattern == null
+                ? Specification.unrestricted()
+                : (root, _, builder) -> CriteriaSupport.like(builder, root.get("user").get("email"), pattern);
     }
 
     public static Specification<Reservation> hasScreening(@Nullable UUID screeningId) {
         return screeningId == null
                 ? Specification.unrestricted()
-                : (root, query, builder) -> builder.equal(screening(root).get("uuid"), screeningId);
+                : (root, _, builder) -> builder.equal(screening(root).get("uuid"), screeningId);
     }
 
     public static Specification<Reservation> hasMovie(@Nullable UUID movieId) {
         return movieId == null
                 ? Specification.unrestricted()
-                : (root, query, builder) -> builder.equal(screening(root).get("movie").get("uuid"), movieId);
+                : (root, _, builder) -> builder.equal(screening(root).get("movie").get("uuid"), movieId);
     }
 
     /**
@@ -109,11 +107,13 @@ public final class ReservationSpecifications {
         return between(from, to, root -> screening(root).get("startsAt"));
     }
 
-    public static Specification<Reservation> upcoming(boolean upcomingOnly) {
+    /**
+     * Sólo funciones que todavía no empezaron a {@code now}.
+     */
+    public static Specification<Reservation> upcoming(boolean upcomingOnly, OffsetDateTime now) {
         return !upcomingOnly
                 ? Specification.unrestricted()
-                : (root, query, builder) -> builder.greaterThanOrEqualTo(
-                screening(root).get("startsAt"), OffsetDateTime.now());
+                : (root, _, builder) -> builder.greaterThanOrEqualTo(screening(root).get("startsAt"), now);
     }
 
     private static Specification<Reservation> between(@Nullable OffsetDateTime from,
@@ -122,7 +122,7 @@ public final class ReservationSpecifications {
         if (from == null && to == null) {
             return Specification.unrestricted();
         }
-        return (root, query, builder) -> {
+        return (root, _, builder) -> {
             Path<OffsetDateTime> path = attribute.of(root);
             if (from != null && to != null) {
                 return builder.between(path, from, to);
@@ -135,10 +135,6 @@ public final class ReservationSpecifications {
 
     private static Path<MovieScreening> screening(Root<Reservation> root) {
         return root.get("movieScreening");
-    }
-
-    private static boolean isCountQuery(Class<?> resultType) {
-        return Long.class.equals(resultType) || long.class.equals(resultType);
     }
 
     /**

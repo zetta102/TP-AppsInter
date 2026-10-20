@@ -2,6 +2,7 @@ package tp.appsinter.cine.hold.dto.request;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.NotNull;
 
 import java.util.List;
 import java.util.UUID;
@@ -14,7 +15,7 @@ import java.util.UUID;
  */
 @Schema(name = "SeatHoldRequest")
 public record SeatHoldRequestDTO(
-        @NotEmpty List<UUID> seatIds
+        @NotEmpty List<@NotNull UUID> seatIds
 ) {
     public SeatHoldRequestDTO {
         seatIds = seatIds == null ? List.of() : seatIds.stream().distinct().toList();

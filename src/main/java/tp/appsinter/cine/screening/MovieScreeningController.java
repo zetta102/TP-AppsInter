@@ -55,12 +55,12 @@ public class MovieScreeningController {
 
     @GetMapping
     public PageResponseDTO<ScreeningResponseDTO> findAll(
-            Authentication authentication,
+            @Nullable Authentication authentication,
             @RequestParam(defaultValue = "false") boolean upcomingOnly,
-            @RequestParam(required = false) UUID movieId,
-            @RequestParam(required = false) UUID roomId,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime from,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime to,
+            @RequestParam(required = false) @Nullable UUID movieId,
+            @RequestParam(required = false) @Nullable UUID roomId,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) @Nullable OffsetDateTime from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) @Nullable OffsetDateTime to,
             @RequestParam(defaultValue = "true") boolean includeAvailability,
             @RequestParam(defaultValue = "false") boolean includeArchived,
             @ParameterObject @AllowedSort({"startsAt", "endsAt", "basePrice"}) Pageable pageable) {
@@ -76,7 +76,7 @@ public class MovieScreeningController {
      */
     @GetMapping("/{uuid}")
     public ScreeningResponseDTO findById(
-            Authentication authentication,
+            @Nullable Authentication authentication,
             @PathVariable UUID uuid,
             @RequestParam(defaultValue = "true") boolean includeAvailability,
             @Parameter(description = "Extra parts to embed",
@@ -120,7 +120,7 @@ public class MovieScreeningController {
      * disponibles las butacas que él mismo tiene bloqueadas.
      */
     @GetMapping("/{uuid}/seats")
-    public SeatMapResponseDTO findSeatMap(Authentication authentication, @PathVariable UUID uuid) {
+    public SeatMapResponseDTO findSeatMap(@Nullable Authentication authentication, @PathVariable UUID uuid) {
         return seatMapService.findSeatMap(uuid, viewer(authentication));
     }
 
@@ -137,7 +137,7 @@ public class MovieScreeningController {
             content = @Content(mediaType = MediaType.TEXT_EVENT_STREAM_VALUE,
                     array = @ArraySchema(schema = @Schema(implementation = SeatStateResponseDTO.class)))))
     @GetMapping(path = "/{uuid}/seats/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter streamSeatMap(Authentication authentication, @PathVariable UUID uuid) {
+    public SseEmitter streamSeatMap(@Nullable Authentication authentication, @PathVariable UUID uuid) {
         return seatStreamService.subscribe(uuid, viewer(authentication));
     }
 

@@ -9,16 +9,12 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Conflicto con el estado actual del recurso. Se traduce a {@code 409} y, salvo indicación
+ * Conflicto con el estado actual del recurso. Se publica como {@code 409} y, salvo indicación
  * contraria, es reintentable después de que el cliente vuelva a leer el recurso.
  */
 public final class ConflictException extends DomainException {
 
-    public ConflictException(String message) {
-        this(message, ErrorCode.CONFLICT, Map.of());
-    }
-
-    public ConflictException(String message, ErrorCode code, Map<String, Object> context) {
+    private ConflictException(String message, ErrorCode code, Map<String, Object> context) {
         super(message, code, context);
     }
 
@@ -38,7 +34,7 @@ public final class ConflictException extends DomainException {
     }
 
     /**
-     * Alguna posición del lote de butacas ya está ocupada, o el propio lote la repite. El contexto
+     * Alguna posición de butaca ya está ocupada en la sala, o el propio lote la repite. El contexto
      * lleva la lista completa para que el cliente pueda corregir de una sola vez en lugar de
      * descubrir los choques de a uno.
      */
@@ -69,7 +65,11 @@ public final class ConflictException extends DomainException {
     }
 
     /**
-     * El borrado está bloqueado porque otros registros referencian el recurso.
+     * La operación está bloqueada porque otros registros dependen del recurso: borrarlo, archivarlo,
+     * moverlo o reprogramarlo los dejaría inconsistentes.
+     *
+     * @param resource     el recurso que no puede cambiar
+     * @param referencedBy lo que depende de él
      */
     public static ConflictException resourceInUse(String message, String resource, String referencedBy) {
         return new ConflictException(message, ErrorCode.RESOURCE_IN_USE,

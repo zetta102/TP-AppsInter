@@ -9,11 +9,12 @@ import java.time.OffsetDateTime;
 import java.util.UUID;
 
 /**
- * Un movimiento de stock asentado.
+ * Un movimiento manual de stock asentado: la carga inicial del producto, una reposición, una baja o
+ * una corrección.
  *
- * <p>El stock se fijaba en valor absoluto, así que una diferencia entre lo contado y lo registrado
- * no tenía explicación posible. Guardar cada ajuste con su motivo convierte esa diferencia en algo
- * que se puede rastrear.
+ * <p>Guardar cada movimiento con su motivo y su autor permite explicar una diferencia entre lo
+ * contado y lo registrado. Las ventas y cancelaciones no se asientan acá: constan en las líneas de
+ * cada reserva.
  */
 @Entity
 @NullUnmarked
@@ -54,7 +55,8 @@ public class InventoryAdjustment {
     private String reason;
 
     /**
-     * Correo de quien lo hizo. Puede faltar en ajustes de origen automático.
+     * Correo de quien lo hizo, o {@code null} si no lo hizo una persona con cuenta (la carga de
+     * datos de demostración, por ejemplo).
      */
     @Column(name = "adjusted_by")
     private String adjustedBy;

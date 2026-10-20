@@ -30,7 +30,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * {@code import}; el código no tiene ninguna.
  */
 @DisplayName("Feature dependencies")
-class FeatureDependencyTests {
+class FeatureDependencyTest {
 
     private static final Path ROOT = Path.of("src", "main", "java", "tp", "appsinter", "cine");
     private static final Pattern IMPORT =

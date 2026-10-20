@@ -4,6 +4,7 @@ import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.jspecify.annotations.Nullable;
 import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
@@ -28,11 +29,11 @@ public class UserController {
 
     @GetMapping
     public PageResponseDTO<UserResponseDTO> findAll(
-            @RequestParam(required = false) Role role,
+            @RequestParam(required = false) @Nullable Role role,
             @Parameter(description = "Part of the e-mail, case-insensitive")
-            @RequestParam(required = false) String email,
+            @RequestParam(required = false) @Nullable String email,
             @Parameter(description = "Part of the first name, last name or full name, case-insensitive")
-            @RequestParam(required = false) String name,
+            @RequestParam(required = false) @Nullable String name,
             @ParameterObject @AllowedSort({"email", "firstName", "lastName", "role"}) Pageable pageable) {
         return userService.findAll(role, email, name, pageable);
     }

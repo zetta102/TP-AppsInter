@@ -3,6 +3,7 @@ package tp.appsinter.cine.movie;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.jspecify.annotations.Nullable;
 import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
@@ -34,9 +35,9 @@ public class MovieController {
 
     @GetMapping
     public PageResponseDTO<MovieResponseDTO> findAll(
-            @RequestParam(required = false) String search,
-            @RequestParam(required = false) List<MovieGenre> genre,
-            @RequestParam(required = false) Integer releaseYear,
+            @RequestParam(required = false) @Nullable String search,
+            @RequestParam(required = false) @Nullable List<MovieGenre> genre,
+            @RequestParam(required = false) @Nullable Integer releaseYear,
             @RequestParam(defaultValue = "false") boolean includeArchived,
             @ParameterObject @AllowedSort({"movieName", "runtime", "releaseYear", "director", "originalLanguage",
                     "certification"}) Pageable pageable) {

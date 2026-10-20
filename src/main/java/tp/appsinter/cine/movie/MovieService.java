@@ -11,7 +11,9 @@ import tp.appsinter.cine.shared.dto.response.PageResponseDTO;
 import tp.appsinter.cine.shared.error.BusinessRuleException;
 import tp.appsinter.cine.shared.error.ConflictException;
 import tp.appsinter.cine.shared.error.NotFoundException;
+import tp.appsinter.cine.shared.persistence.CriteriaSupport;
 
+import java.time.Clock;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -24,10 +26,7 @@ public class MovieService {
 
     private final MovieRepository movieRepository;
     private final MovieScreenings movieScreenings;
-
-    private static @Nullable String normalise(@Nullable String search) {
-        return search == null || search.isBlank() ? null : search.trim();
-    }
+    private final Clock clock;
 
     @Transactional
     public MovieResponseDTO create(MovieRequestDTO request) {
@@ -53,7 +52,8 @@ public class MovieService {
                                                            Pageable pageable) {
         List<MovieGenre> requested = genres == null || genres.isEmpty() ? null : genres;
         return PageResponseDTO.from(
-                movieRepository.search(normalise(search), requested, releaseYear, includeArchived, pageable),
+                movieRepository.search(CriteriaSupport.containsPattern(search), requested, releaseYear,
+                        includeArchived, pageable),
                 MovieResponseDTO::from);
     }
 
@@ -61,9 +61,23 @@ public class MovieService {
         return MovieResponseDTO.from(getMovie(uuid));
     }
 
+    /**
+     * Edita una película.
+     *
+     * <p>La duración no puede cambiar mientras la película tenga funciones sin terminar
+     * ({@code 409 RESOURCE_IN_USE}): el fin de cada función se calculó con la duración vigente al
+     * programarla, y cambiarla por debajo dejaría horarios que ya no alcanzan o que pisan a la
+     * función siguiente. Se reprograman o se archivan primero.
+     */
     @Transactional
     public MovieResponseDTO update(UUID uuid, MovieRequestDTO request) {
         Movie movie = getMovie(uuid);
+        if (!movie.getRuntime().equals(request.runtime())
+                && movieScreenings.hasUpcoming(uuid, OffsetDateTime.now(clock))) {
+            throw ConflictException.resourceInUse(
+                    "Movie %s has upcoming screenings; its runtime cannot change".formatted(uuid),
+                    "Movie", "Movie screening");
+        }
         movie.setMovieName(request.movieName());
         movie.setGenres(new ArrayList<>(request.genres()));
         movie.setRuntime(request.runtime());
@@ -97,7 +111,7 @@ public class MovieService {
         if (archived == movie.isArchived()) {
             return MovieResponseDTO.from(movie);
         }
-        OffsetDateTime now = OffsetDateTime.now();
+        OffsetDateTime now = OffsetDateTime.now(clock);
         if (archived && movieScreenings.hasUpcoming(uuid, now)) {
             throw ConflictException.resourceInUse(
                     "Movie %s still has upcoming screenings; archive them first".formatted(uuid),

@@ -14,6 +14,7 @@ import tp.appsinter.cine.shared.error.NotFoundException;
 import tp.appsinter.cine.user.User;
 import tp.appsinter.cine.user.UserService;
 
+import java.time.Clock;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
@@ -26,6 +27,7 @@ public class ContactMessageService {
 
     private final ContactMessageRepository contactMessageRepository;
     private final UserService userService;
+    private final Clock clock;
 
     @Transactional
     public ContactMessageResponseDTO create(String userEmail, ContactMessageRequestDTO request) {
@@ -35,6 +37,7 @@ public class ContactMessageService {
                 .category(request.category())
                 .subject(request.subject().strip())
                 .body(request.body().strip())
+                .createdAt(OffsetDateTime.now(clock))
                 .build();
         return ContactMessageResponseDTO.from(contactMessageRepository.save(message));
     }
@@ -70,7 +73,7 @@ public class ContactMessageService {
         message.setCategory(request.category());
         message.setSubject(request.subject().strip());
         message.setBody(request.body().strip());
-        message.setUpdatedAt(OffsetDateTime.now());
+        message.setUpdatedAt(OffsetDateTime.now(clock));
         return ContactMessageResponseDTO.from(message);
     }
 
@@ -100,7 +103,7 @@ public class ContactMessageService {
     public ContactMessageResponseDTO open(UUID uuid) {
         ContactMessage message = getMessage(uuid);
         if (!message.isRead()) {
-            message.setReadAt(OffsetDateTime.now());
+            message.setReadAt(OffsetDateTime.now(clock));
         }
         return ContactMessageResponseDTO.from(message);
     }

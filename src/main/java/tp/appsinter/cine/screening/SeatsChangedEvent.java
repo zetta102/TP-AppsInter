@@ -10,9 +10,14 @@ import java.util.UUID;
  *
  * <p>No dice cuál es el estado nuevo, porque depende de quién mire —los bloqueos propios se ven
  * disponibles—; quien lo escucha lo vuelve a calcular. Se publica dentro de la transacción que hizo
- * el cambio y sólo se atiende si ésta confirma.
+ * el cambio y se atiende cuando ésta confirma; si no hay transacción (el barrido de bloqueos, por
+ * ejemplo, si algún día corriera sin una), se atiende de inmediato.
  */
 public record SeatsChangedEvent(UUID screeningId, Set<UUID> seatIds) {
+
+    public SeatsChangedEvent {
+        seatIds = Set.copyOf(seatIds);
+    }
 
     public SeatsChangedEvent(UUID screeningId, Collection<UUID> seatIds) {
         this(screeningId, Set.copyOf(seatIds));

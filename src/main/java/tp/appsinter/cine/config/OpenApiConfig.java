@@ -25,7 +25,7 @@ public class OpenApiConfig {
         return new OpenAPI()
                 .info(new Info()
                         .title("Cine API")
-                        .description("API de reservas de cine")
+                        .description("Cinema booking API")
                         .version("v1"))
                 .components(new Components().addSecuritySchemes(BEARER_SCHEME, new SecurityScheme()
                         .type(SecurityScheme.Type.HTTP)

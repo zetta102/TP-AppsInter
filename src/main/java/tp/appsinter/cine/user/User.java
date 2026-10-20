@@ -32,14 +32,17 @@ public class User {
     @Column(nullable = false)
     private String lastName;
 
-    @Column(nullable = false, unique = true)
+    /**
+     * Único sin distinguir mayúsculas: lo garantiza el índice {@code uk_app_user_email_lower}.
+     */
+    @Column(nullable = false)
     private String email;
 
     @Column(nullable = false)
     private String password;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
+    @Column(nullable = false, length = 20)
     @Builder.Default
     private Role role = Role.CUSTOMER;
 

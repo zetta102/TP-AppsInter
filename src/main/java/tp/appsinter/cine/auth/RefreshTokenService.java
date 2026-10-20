@@ -14,6 +14,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
+import java.time.Clock;
 import java.time.OffsetDateTime;
 import java.util.Base64;
 import java.util.HexFormat;
@@ -32,6 +33,7 @@ public class RefreshTokenService implements UserSessions {
 
     private final RefreshTokenRepository refreshTokenRepository;
     private final JwtProperties properties;
+    private final Clock clock;
     private final SecureRandom secureRandom = new SecureRandom();
 
     @Transactional
@@ -49,7 +51,7 @@ public class RefreshTokenService implements UserSessions {
         secureRandom.nextBytes(raw);
         String token = Base64.getUrlEncoder().withoutPadding().encodeToString(raw);
 
-        OffsetDateTime now = OffsetDateTime.now();
+        OffsetDateTime now = OffsetDateTime.now(clock);
         RefreshToken entity = RefreshToken.builder()
                 .user(user)
                 .tokenHash(hash(token))
@@ -74,12 +76,15 @@ public class RefreshTokenService implements UserSessions {
      * puede saber si quien insiste es el dueño o el ladrón, y dejar afuera a los dos es más seguro
      * que dejar entrar a uno de ellos.
      *
+     * <p>Un token ya revocado se rechaza con el mismo código, pero sin tratarlo como robo: después de
+     * cerrar sesión o de cambiar la contraseña es normal que otra pestaña lo siga presentando.
+     *
      * <p>La revocación tiene que sobrevivir a la excepción que avisa del robo; sin
      * {@code noRollbackFor} se desharía junto con la transacción y la familia seguiría viva.
      */
-    @Transactional(noRollbackFor = RefreshTokenReusedException.class)
+    @Transactional(noRollbackFor = RefreshTokenRevokedException.class)
     public RotatedRefreshToken rotate(String token) {
-        OffsetDateTime now = OffsetDateTime.now();
+        OffsetDateTime now = OffsetDateTime.now(clock);
         RefreshToken existing = refreshTokenRepository.findByTokenHash(hash(token))
                 .orElseThrow(() -> new BadCredentialsException("Refresh token is invalid or expired"));
 
@@ -88,12 +93,19 @@ public class RefreshTokenService implements UserSessions {
             User user = existing.getUser();
             return new RotatedRefreshToken(user, issue(user, existing.getFamilyId()));
         }
+        if (existing.getRevokedAt() != null) {
+            log.debug("Revoked refresh token presented for family {} ({})",
+                    existing.getFamilyId(), existing.getRevokedReason());
+            throw new RefreshTokenRevokedException(existing.getRevokedReason() == RevocationReason.REUSE
+                    ? "Refresh token has already been used"
+                    : "Refresh token was revoked");
+        }
+        if (existing.getRotatedAt() != null) {
+            refreshTokenRepository.revokeFamily(existing.getFamilyId(), now, RevocationReason.REUSE);
+            log.warn("Refresh token reuse detected; revoked family {}", existing.getFamilyId());
+            throw new RefreshTokenRevokedException("Refresh token has already been used");
+        }
         if (!existing.isActive(now)) {
-            if (existing.getRotatedAt() != null || existing.getRevokedAt() != null) {
-                refreshTokenRepository.revokeFamily(existing.getFamilyId(), now);
-                log.warn("Refresh token reuse detected; revoked family {}", existing.getFamilyId());
-                throw new RefreshTokenReusedException("Refresh token has already been used");
-            }
             throw new BadCredentialsException("Refresh token is invalid or expired");
         }
 
@@ -110,14 +122,18 @@ public class RefreshTokenService implements UserSessions {
     @Transactional
     public void revoke(String token) {
         refreshTokenRepository.findByTokenHash(hash(token))
-                .ifPresent(refreshToken ->
-                        refreshTokenRepository.revokeFamily(refreshToken.getFamilyId(), OffsetDateTime.now()));
+                .ifPresent(refreshToken -> refreshTokenRepository.revokeFamily(
+                        refreshToken.getFamilyId(), OffsetDateTime.now(clock), RevocationReason.LOGOUT));
     }
 
+    /**
+     * Corta todas las sesiones de una cuenta que se da de baja.
+     */
     @Override
     @Transactional
     public void revokeAll(User user) {
-        refreshTokenRepository.revokeAllForUser(user.getUuid(), OffsetDateTime.now());
+        refreshTokenRepository.revokeAllForUser(
+                user.getUuid(), OffsetDateTime.now(clock), RevocationReason.ACCOUNT_DELETED);
     }
 
     /**
@@ -130,12 +146,13 @@ public class RefreshTokenService implements UserSessions {
     @Override
     @Transactional
     public void revokeAllExcept(User user, @Nullable String keep) {
-        OffsetDateTime now = OffsetDateTime.now();
+        OffsetDateTime now = OffsetDateTime.now(clock);
         if (keep == null || keep.isBlank()) {
-            refreshTokenRepository.revokeAllForUser(user.getUuid(), now);
+            refreshTokenRepository.revokeAllForUser(user.getUuid(), now, RevocationReason.PASSWORD_CHANGED);
             return;
         }
-        refreshTokenRepository.revokeAllForUserExcept(user.getUuid(), hash(keep), now);
+        refreshTokenRepository.revokeAllForUserExcept(
+                user.getUuid(), hash(keep), now, RevocationReason.PASSWORD_CHANGED);
     }
 
     /**
@@ -147,7 +164,7 @@ public class RefreshTokenService implements UserSessions {
     @Scheduled(fixedDelayString = "${cine.jwt.refresh-sweep-delay}")
     @Transactional
     public void sweepExpired() {
-        int deleted = refreshTokenRepository.deleteExpired(OffsetDateTime.now());
+        int deleted = refreshTokenRepository.deleteExpired(OffsetDateTime.now(clock));
         if (deleted > 0) {
             log.debug("Deleted {} expired refresh tokens", deleted);
         }

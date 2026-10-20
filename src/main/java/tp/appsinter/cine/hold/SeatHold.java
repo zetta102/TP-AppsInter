@@ -2,6 +2,7 @@ package tp.appsinter.cine.hold;
 
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.BatchSize;
 import org.hibernate.annotations.UuidGenerator;
 import org.jspecify.annotations.NullUnmarked;
 import tp.appsinter.cine.room.Seat;
@@ -49,7 +50,10 @@ public class SeatHold {
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
+    // En lotes, como las colecciones de Movie: el barrido y las suelta de una compra leen varios
+    // bloqueos a la vez, y sin @BatchSize cada uno dispararía su propia consulta de butacas.
     @ManyToMany(fetch = FetchType.EAGER)
+    @BatchSize(size = 50)
     @JoinTable(
             name = "seat_hold_seat",
             joinColumns = @JoinColumn(name = "seat_hold_id"),
@@ -70,13 +74,6 @@ public class SeatHold {
      */
     @Column(name = "released_at")
     private OffsetDateTime releasedAt;
-
-    @PrePersist
-    void onCreate() {
-        if (createdAt == null) {
-            createdAt = OffsetDateTime.now();
-        }
-    }
 
     public boolean isLive(OffsetDateTime at) {
         return releasedAt == null && expiresAt.isAfter(at);

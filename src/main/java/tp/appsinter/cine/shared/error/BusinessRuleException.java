@@ -9,16 +9,14 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Regla de negocio incumplida. Se traduce a {@code 422}: a diferencia de un {@code 409}, reintentar
- * la misma petición sin cambiarla siempre vuelve a fallar.
+ * Regla de negocio incumplida: reintentar la misma petición sin cambiarla siempre vuelve a fallar,
+ * a diferencia de un {@link ConflictException}. El estado sale del código: {@code 422} para las
+ * reglas del dominio y {@code 400 VALIDATION_FAILED} para las de un campo que Bean Validation no
+ * puede expresar ({@link #invalidField}).
  */
 public final class BusinessRuleException extends DomainException {
 
-    public BusinessRuleException(String message) {
-        this(message, ErrorCode.BAD_REQUEST, Map.of());
-    }
-
-    public BusinessRuleException(String message, ErrorCode code, Map<String, Object> context) {
+    private BusinessRuleException(String message, ErrorCode code, Map<String, Object> context) {
         super(message, code, context);
     }
 
@@ -63,8 +61,7 @@ public final class BusinessRuleException extends DomainException {
      * generado. Crear una sala vacía en silencio sería peor que rechazarlo.
      */
     public static BusinessRuleException emptyLayout() {
-        return new BusinessRuleException("The requested layout produces no seats",
-                ErrorCode.VALIDATION_FAILED, Map.of());
+        return invalidField("skip", "EmptyLayout", "must leave at least one seat in the layout");
     }
 
     /**
@@ -76,7 +73,8 @@ public final class BusinessRuleException extends DomainException {
     }
 
     /**
-     * El cambio de rol dejaría el sistema sin administradores.
+     * El cambio de rol o la baja dejaría el sistema sin administradores, o un administrador intenta
+     * quitarse el rol o darse de baja a sí mismo.
      */
     public static BusinessRuleException lastAdmin(String message) {
         return new BusinessRuleException(message, ErrorCode.LAST_ADMIN, Map.of());
@@ -121,13 +119,5 @@ public final class BusinessRuleException extends DomainException {
     public static BusinessRuleException resourceArchived(String resource, UUID id) {
         return new BusinessRuleException("%s %s is archived".formatted(resource, id),
                 ErrorCode.RESOURCE_ARCHIVED, context("resource", resource, "id", id));
-    }
-
-    /**
-     * Un ajuste de stock de cero no describe ningún movimiento y sólo ensuciaría el historial.
-     */
-    public static BusinessRuleException emptyAdjustment() {
-        return new BusinessRuleException("A stock adjustment must not be zero",
-                ErrorCode.VALIDATION_FAILED, Map.of());
     }
 }

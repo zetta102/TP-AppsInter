@@ -2,6 +2,7 @@ package tp.appsinter.cine.reservation;
 
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.BatchSize;
 import org.hibernate.annotations.UuidGenerator;
 import org.jspecify.annotations.NullUnmarked;
 import tp.appsinter.cine.screening.MovieScreening;
@@ -39,11 +40,17 @@ public class Reservation {
     @JoinColumn(name = "movie_screening_id", nullable = false)
     private MovieScreening movieScreening;
 
+    /*
+     * Ambas colecciones se cargan en lotes: una página de reservas las necesita todas, y sin
+     * @BatchSize dispararía dos consultas por reserva.
+     */
     @OneToMany(mappedBy = "reservation", cascade = CascadeType.ALL, orphanRemoval = true)
+    @BatchSize(size = 50)
     @Builder.Default
     private List<Ticket> tickets = new ArrayList<>();
 
     @OneToMany(mappedBy = "reservation", cascade = CascadeType.ALL, orphanRemoval = true)
+    @BatchSize(size = 50)
     @Builder.Default
     private List<ReservationItem> items = new ArrayList<>();
 
@@ -76,13 +83,6 @@ public class Reservation {
 
     @Version
     private Long version;
-
-    @PrePersist
-    void onCreate() {
-        if (createdAt == null) {
-            createdAt = OffsetDateTime.now();
-        }
-    }
 
     public void addTicket(Ticket ticket) {
         tickets.add(ticket);

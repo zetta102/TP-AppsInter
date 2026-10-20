@@ -112,7 +112,7 @@ public class ProblemSchemaCustomizer implements GlobalOpenApiCustomizer {
         }
         responses.keySet().removeIf(status -> !status.startsWith("2") && !status.startsWith("3"));
         responses.addApiResponse("default", new ApiResponse()
-                .description("Error (RFC 7807 problem details)")
+                .description("Error (RFC 9457 problem details)")
                 .content(new Content().addMediaType(PROBLEM_JSON, new MediaType().schema(ref(PROBLEM)))));
     }
 }

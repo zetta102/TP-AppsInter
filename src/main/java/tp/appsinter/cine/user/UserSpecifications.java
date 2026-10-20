@@ -3,8 +3,7 @@ package tp.appsinter.cine.user;
 import jakarta.persistence.criteria.Expression;
 import org.jspecify.annotations.Nullable;
 import org.springframework.data.jpa.domain.Specification;
-
-import java.util.Locale;
+import tp.appsinter.cine.shared.persistence.CriteriaSupport;
 
 /**
  * Filtros combinables de la búsqueda de usuarios de administración.
@@ -15,8 +14,6 @@ import java.util.Locale;
  */
 public final class UserSpecifications {
 
-    private static final char ESCAPE = '\\';
-
     private UserSpecifications() {
     }
 
@@ -24,20 +21,20 @@ public final class UserSpecifications {
      * Las cuentas dadas de baja nunca aparecen en la administración.
      */
     public static Specification<User> active() {
-        return (root, query, builder) -> builder.isNull(root.get("deletedAt"));
+        return (root, _, builder) -> builder.isNull(root.get("deletedAt"));
     }
 
     public static Specification<User> hasRole(@Nullable Role role) {
         return role == null
                 ? Specification.unrestricted()
-                : (root, query, builder) -> builder.equal(root.get("role"), role);
+                : (root, _, builder) -> builder.equal(root.get("role"), role);
     }
 
     public static Specification<User> emailContains(@Nullable String email) {
-        String pattern = containsPattern(email);
+        String pattern = CriteriaSupport.containsPattern(email);
         return pattern == null
                 ? Specification.unrestricted()
-                : (root, query, builder) -> builder.like(builder.lower(root.get("email")), pattern, ESCAPE);
+                : (root, _, builder) -> CriteriaSupport.like(builder, root.get("email"), pattern);
     }
 
     /**
@@ -45,29 +42,18 @@ public final class UserSpecifications {
      * «Ada Lovelace»).
      */
     public static Specification<User> nameContains(@Nullable String name) {
-        String pattern = containsPattern(name);
+        String pattern = CriteriaSupport.containsPattern(name);
         if (pattern == null) {
             return Specification.unrestricted();
         }
-        return (root, query, builder) -> {
-            Expression<String> firstName = builder.lower(root.get("firstName"));
-            Expression<String> lastName = builder.lower(root.get("lastName"));
+        return (root, _, builder) -> {
+            Expression<String> firstName = root.get("firstName");
+            Expression<String> lastName = root.get("lastName");
             Expression<String> fullName = builder.concat(builder.concat(firstName, " "), lastName);
             return builder.or(
-                    builder.like(firstName, pattern, ESCAPE),
-                    builder.like(lastName, pattern, ESCAPE),
-                    builder.like(fullName, pattern, ESCAPE));
+                    CriteriaSupport.like(builder, firstName, pattern),
+                    CriteriaSupport.like(builder, lastName, pattern),
+                    CriteriaSupport.like(builder, fullName, pattern));
         };
-    }
-
-    private static @Nullable String containsPattern(@Nullable String term) {
-        if (term == null || term.isBlank()) {
-            return null;
-        }
-        String escaped = term.trim().toLowerCase(Locale.ROOT)
-                .replace("\\", "\\\\")
-                .replace("%", "\\%")
-                .replace("_", "\\_");
-        return "%" + escaped + "%";
     }
 }

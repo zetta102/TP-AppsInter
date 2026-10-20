@@ -1,30 +1,29 @@
 package tp.appsinter.cine.shared.error;
 
-import org.jspecify.annotations.Nullable;
-
 import java.util.UUID;
 
 /**
  * El recurso no existe, o existe pero no pertenece a quien lo solicita. Ambos casos se responden
- * igual para no filtrar la existencia de datos ajenos.
+ * igual para no filtrar la existencia de datos ajenos. El nombre del recurso se publica en
+ * {@code context.resource}.
  */
 public final class NotFoundException extends DomainException {
 
-    public NotFoundException(String message) {
-        this(message, null);
-    }
-
-    /**
-     * @param resource nombre del recurso ausente, publicado en {@code context.resource}
-     */
-    public NotFoundException(String message, @Nullable String resource) {
+    private NotFoundException(String message, String resource) {
         super(message, ErrorCode.NOT_FOUND, context("resource", resource));
     }
 
     /**
-     * Atajo para el caso habitual de buscar una entidad por su identificador.
+     * El caso habitual: una entidad buscada por su identificador.
      */
-    public static NotFoundException of(String entity, UUID uuid) {
-        return new NotFoundException("%s %s not found".formatted(entity, uuid), entity);
+    public static NotFoundException of(String resource, UUID uuid) {
+        return new NotFoundException("%s %s not found".formatted(resource, uuid), resource);
+    }
+
+    /**
+     * Para cuando no hay un único identificador que nombrar, por ejemplo al pedir varias butacas.
+     */
+    public static NotFoundException withMessage(String resource, String message) {
+        return new NotFoundException(message, resource);
     }
 }

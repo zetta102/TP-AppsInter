@@ -7,10 +7,11 @@ import org.jspecify.annotations.NullUnmarked;
 import tp.appsinter.cine.inventory.Inventory;
 
 import java.math.BigDecimal;
+import java.time.OffsetDateTime;
 import java.util.UUID;
 
 /**
- * Producto del candy bar comprado junto con las entradas. El nombre y el precio se copian al
+ * Producto de la confitería comprado junto con las entradas. El nombre y el precio se copian al
  * momento de la compra para que una edición posterior del catálogo no reescriba la historia.
  */
 @Entity
@@ -56,4 +57,11 @@ public class ReservationItem {
 
     @Column(name = "line_total", nullable = false, precision = 10, scale = 2)
     private BigDecimal lineTotal;
+
+    /**
+     * Momento en que se canceló la reserva, o {@code null} si la línea sigue vigente. La línea no se
+     * borra: queda para poder auditar qué se dejó de vender.
+     */
+    @Column(name = "cancelled_at")
+    private OffsetDateTime cancelledAt;
 }
